@@ -23,52 +23,54 @@ impl CPU {
     }
 
     pub fn interpret(&mut self, program: &[u8]) {
-        self.pc = 0;
         loop {
-            let ops = program[self.pc as usize];
-            self.pc += 1;
-            match ops {
+            match self.read_pc_next(program) {
                 // BRK
                 0x00 => break,
 
                 // LDA Immediate
                 0xa9 => {
-                    let param = program[self.pc as usize];
-                    self.pc += 1;
-                    self.reg_a = param;
-
-                    if self.reg_a == 0 {
-                        self.status |= Status::ZERO;
-                    } else {
-                        self.status &= !Status::ZERO;
-                    }
-
-                    if self.reg_a & 0b1000_0000 != 0 {
-                        self.status |= Status::NEGATIVE;
-                    } else {
-                        self.status &= !Status::NEGATIVE;
-                    }
+                    let value = self.read_pc_next(program);
+                    self.lda(value);
                 }
 
                 // TAX
                 0xaa => {
-                    self.reg_x = self.reg_a;
-
-                    if self.reg_x == 0 {
-                        self.status |= Status::ZERO;
-                    } else {
-                        self.status &= !Status::ZERO;
-                    }
-
-                    if self.reg_x & 0b1000_0000 != 0 {
-                        self.status |= Status::NEGATIVE;
-                    } else {
-                        self.status &= !Status::NEGATIVE;
-                    }
+                    self.tax();
                 }
 
                 _ => todo!(),
             }
+        }
+    }
+
+    fn read_pc_next(&mut self, program: &[u8]) -> u8 {
+        let byte = program[self.pc as usize];
+        self.pc += 1;
+        byte
+    }
+
+    fn lda(&mut self, value: u8) {
+        self.reg_a = value;
+        self.update_status(self.reg_a);
+    }
+
+    fn tax(&mut self) {
+        self.reg_x = self.reg_a;
+        self.update_status(self.reg_x);
+    }
+
+    fn update_status(&mut self, result: u8) {
+        if result == 0 {
+            self.status |= Status::ZERO;
+        } else {
+            self.status &= !Status::ZERO;
+        }
+
+        if result & 0b1000_0000 != 0 {
+            self.status |= Status::NEGATIVE;
+        } else {
+            self.status &= !Status::NEGATIVE;
         }
     }
 }
