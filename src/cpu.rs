@@ -705,15 +705,22 @@ impl Cpu {
         let addr = self
             .operand_addr_next(op.mode)
             .expect("LDA requires an address operand");
-        self.reg_a = self.mem.read(addr);
+        let value = self.mem.read(addr);
+        self.reg_a = value;
 
-        self.status.set(Status::ZERO, self.reg_a == 0);
-        self.status
-            .set(Status::NEGATIVE, self.reg_a & SIGN_BIT != 0);
+        self.status.set(Status::ZERO, value == 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn ldx(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn ldx(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("LDX requires an address operand");
+        let value = self.mem.read(addr);
+        self.reg_x = value;
+
+        self.status.set(Status::ZERO, value == 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn ldy(&mut self, _op: &'static Op) {
