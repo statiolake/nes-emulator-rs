@@ -533,8 +533,13 @@ impl Cpu {
         }
     }
 
-    fn bvs(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn bvs(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("BVS requires an address operand");
+        if self.status.contains(Status::OVERFLOW) {
+            self.pc = addr;
+        }
     }
 
     fn clc(&mut self, _op: &'static Op) {
