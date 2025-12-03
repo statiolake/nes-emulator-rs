@@ -940,7 +940,11 @@ impl Cpu {
     }
 
     fn txa(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let result = self.reg_x;
+        self.reg_a = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn txs(&mut self, _op: &'static Op) {
@@ -948,7 +952,11 @@ impl Cpu {
     }
 
     fn tya(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let result = self.reg_y;
+        self.reg_a = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn ivd(&mut self, _op: &'static Op) {
