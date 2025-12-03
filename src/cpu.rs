@@ -880,15 +880,18 @@ impl Cpu {
     }
 
     fn sec(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.status.insert(Status::CARRY);
     }
 
-    fn sed(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn sed(&mut self, op: &'static Op) {
+        panic!(
+            "op {:?} is not supported; decimal mode is not supported",
+            op.name
+        )
     }
 
     fn sei(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.status.insert(Status::INTERRUPT_DISABLE);
     }
 
     fn sta(&mut self, op: &'static Op) {
