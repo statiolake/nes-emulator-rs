@@ -689,8 +689,16 @@ impl Cpu {
         self.pc = addr;
     }
 
-    fn jsr(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn jsr(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("JSR requires an address operand");
+
+        let [lo, hi] = self.pc.to_le_bytes();
+        self.stack_push(hi);
+        self.stack_push(lo);
+
+        self.pc = addr;
     }
 
     fn lda(&mut self, op: &'static Op) {
