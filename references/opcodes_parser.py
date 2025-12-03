@@ -9,18 +9,21 @@ import sys
 from typing import Dict, List
 
 # Addressing mode mapping - maps HTML descriptions to Rust enum names
+# Order matters: more specific patterns first to avoid partial matches
 ADDRESSING_MODES = {
-    "Immediate": "Immediate",
-    "Zero Page": "ZeroPage",
     "Zero Page,X": "ZeroPageX",
     "Zero Page,Y": "ZeroPageY",
-    "Absolute": "Absolute",
     "Absolute,X": "AbsoluteX",
     "Absolute,Y": "AbsoluteY",
-    "Indirect": "Indirect",
     "(Indirect,X)": "IndexedIndirect",
     "(Indirect),Y": "IndirectIndexed",
+    "Immediate": "Immediate",
+    "Zero Page": "ZeroPage",
+    "Absolute": "Absolute",
+    "Indirect": "Indirect",
     "Relative": "Relative",
+    "Accumulator": "Accumulator",
+    "Implied": "Implied",
 }
 
 # Abbreviation to enum name mapping
@@ -36,8 +39,8 @@ ABBREVIATION_MAP = {
     "IDY": "IndirectIndexed",
     "IND": "Indirect",
     "REL": "Relative",
-    "ACC": "None",
-    "IMP": "None",
+    "ACC": "Accumulator",
+    "IMP": "Implied",
 }
 
 
@@ -105,20 +108,22 @@ def parse_opcodes(html_content: str) -> List[Dict]:
 
             opcode_hex = opcode_match.group(1).upper()
 
-            # Find addressing mode from link abbreviation first (more reliable)
+            # Extract clean text from addressing mode cell (most reliable)
+            addressing_mode_text = clean_html(addressing_mode_html)
             addressing_mode = None
-            link_match = re.search(r'href="[^"]*#([A-Z]+)"', addressing_mode_html)
-            if link_match:
-                mode_abbr = link_match.group(1)
-                addressing_mode = ABBREVIATION_MAP.get(mode_abbr)
 
-            # Fallback to text-based matching if abbreviation not found
+            # First try to match by text (handles cases like "Accumulator" even if link is #IMP)
+            for mode_key, mode_value in ADDRESSING_MODES.items():
+                if mode_key in addressing_mode_text:
+                    addressing_mode = mode_value
+                    break
+
+            # Fallback to link abbreviation if text matching failed
             if not addressing_mode:
-                addressing_mode_text = clean_html(addressing_mode_html)
-                for mode_key, mode_value in ADDRESSING_MODES.items():
-                    if mode_key in addressing_mode_text:
-                        addressing_mode = mode_value
-                        break
+                link_match = re.search(r'href="[^"]*#([A-Z]+)"', addressing_mode_html)
+                if link_match:
+                    mode_abbr = link_match.group(1)
+                    addressing_mode = ABBREVIATION_MAP.get(mode_abbr)
 
             if not addressing_mode:
                 continue
@@ -152,7 +157,7 @@ def format_opcode_array(opcodes: List[Dict]) -> str:
         # Convert instruction name to lowercase for function name
         fn_name = instruction.lower()
 
-        line = f'    OpCode::new(0x{opcode_hex}, "{instruction}", AddressingMode::{addressing_mode}, {cycles}, Cpu::{fn_name}),'
+        line = f'    Op::new(0x{opcode_hex}, "{instruction}", AddressingMode::{addressing_mode}, {cycles}, Cpu::{fn_name}),'
         lines.append(line)
 
     lines.append("]")

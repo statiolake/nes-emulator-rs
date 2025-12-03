@@ -88,8 +88,11 @@ pub enum AddressingMode {
     /// ($01), Y
     IndirectIndexed,
 
-    /// A register or for instructions that do not use addressing modes
-    None,
+    /// register A
+    Accumulator,
+
+    /// instructions that do not use addressing modes
+    Implied,
 }
 
 pub struct Op {
@@ -136,7 +139,7 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0x39, "AND", AddressingMode::AbsoluteY, 4, Cpu::and),
     Op::new(0x3D, "AND", AddressingMode::AbsoluteX, 4, Cpu::and),
     Op::new(0x06, "ASL", AddressingMode::ZeroPage, 5, Cpu::asl),
-    Op::new(0x0A, "ASL", AddressingMode::None, 2, Cpu::asl),
+    Op::new(0x0A, "ASL", AddressingMode::Accumulator, 2, Cpu::asl),
     Op::new(0x0E, "ASL", AddressingMode::Absolute, 6, Cpu::asl),
     Op::new(0x16, "ASL", AddressingMode::ZeroPageX, 6, Cpu::asl),
     Op::new(0x1E, "ASL", AddressingMode::AbsoluteX, 7, Cpu::asl),
@@ -148,13 +151,13 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0x30, "BMI", AddressingMode::Relative, 2, Cpu::bmi),
     Op::new(0xD0, "BNE", AddressingMode::Relative, 2, Cpu::bne),
     Op::new(0x10, "BPL", AddressingMode::Relative, 2, Cpu::bpl),
-    Op::new(0x00, "BRK", AddressingMode::None, 7, Cpu::brk),
+    Op::new(0x00, "BRK", AddressingMode::Implied, 7, Cpu::brk),
     Op::new(0x50, "BVC", AddressingMode::Relative, 2, Cpu::bvc),
     Op::new(0x70, "BVS", AddressingMode::Relative, 2, Cpu::bvs),
-    Op::new(0x18, "CLC", AddressingMode::None, 2, Cpu::clc),
-    Op::new(0xD8, "CLD", AddressingMode::None, 2, Cpu::cld),
-    Op::new(0x58, "CLI", AddressingMode::None, 2, Cpu::cli),
-    Op::new(0xB8, "CLV", AddressingMode::None, 2, Cpu::clv),
+    Op::new(0x18, "CLC", AddressingMode::Implied, 2, Cpu::clc),
+    Op::new(0xD8, "CLD", AddressingMode::Implied, 2, Cpu::cld),
+    Op::new(0x58, "CLI", AddressingMode::Implied, 2, Cpu::cli),
+    Op::new(0xB8, "CLV", AddressingMode::Implied, 2, Cpu::clv),
     Op::new(0xC1, "CMP", AddressingMode::IndexedIndirect, 6, Cpu::cmp),
     Op::new(0xC5, "CMP", AddressingMode::ZeroPage, 3, Cpu::cmp),
     Op::new(0xC9, "CMP", AddressingMode::Immediate, 2, Cpu::cmp),
@@ -173,8 +176,8 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0xCE, "DEC", AddressingMode::Absolute, 6, Cpu::dec),
     Op::new(0xD6, "DEC", AddressingMode::ZeroPageX, 6, Cpu::dec),
     Op::new(0xDE, "DEC", AddressingMode::AbsoluteX, 7, Cpu::dec),
-    Op::new(0xCA, "DEX", AddressingMode::None, 2, Cpu::dex),
-    Op::new(0x88, "DEY", AddressingMode::None, 2, Cpu::dey),
+    Op::new(0xCA, "DEX", AddressingMode::Implied, 2, Cpu::dex),
+    Op::new(0x88, "DEY", AddressingMode::Implied, 2, Cpu::dey),
     Op::new(0x41, "EOR", AddressingMode::IndexedIndirect, 6, Cpu::eor),
     Op::new(0x45, "EOR", AddressingMode::ZeroPage, 3, Cpu::eor),
     Op::new(0x49, "EOR", AddressingMode::Immediate, 2, Cpu::eor),
@@ -187,8 +190,8 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0xEE, "INC", AddressingMode::Absolute, 6, Cpu::inc),
     Op::new(0xF6, "INC", AddressingMode::ZeroPageX, 6, Cpu::inc),
     Op::new(0xFE, "INC", AddressingMode::AbsoluteX, 7, Cpu::inc),
-    Op::new(0xE8, "INX", AddressingMode::None, 2, Cpu::inx),
-    Op::new(0xC8, "INY", AddressingMode::None, 2, Cpu::iny),
+    Op::new(0xE8, "INX", AddressingMode::Implied, 2, Cpu::inx),
+    Op::new(0xC8, "INY", AddressingMode::Implied, 2, Cpu::iny),
     Op::new(0x4C, "JMP", AddressingMode::Absolute, 3, Cpu::jmp),
     Op::new(0x6C, "JMP", AddressingMode::Indirect, 5, Cpu::jmp),
     Op::new(0x20, "JSR", AddressingMode::Absolute, 6, Cpu::jsr),
@@ -211,11 +214,11 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0xB4, "LDY", AddressingMode::ZeroPageX, 4, Cpu::ldy),
     Op::new(0xBC, "LDY", AddressingMode::AbsoluteX, 4, Cpu::ldy),
     Op::new(0x46, "LSR", AddressingMode::ZeroPage, 5, Cpu::lsr),
-    Op::new(0x4A, "LSR", AddressingMode::None, 2, Cpu::lsr),
+    Op::new(0x4A, "LSR", AddressingMode::Accumulator, 2, Cpu::lsr),
     Op::new(0x4E, "LSR", AddressingMode::Absolute, 6, Cpu::lsr),
     Op::new(0x56, "LSR", AddressingMode::ZeroPageX, 6, Cpu::lsr),
     Op::new(0x5E, "LSR", AddressingMode::AbsoluteX, 7, Cpu::lsr),
-    Op::new(0xEA, "NOP", AddressingMode::None, 2, Cpu::nop),
+    Op::new(0xEA, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Op::new(0x01, "ORA", AddressingMode::IndexedIndirect, 6, Cpu::ora),
     Op::new(0x05, "ORA", AddressingMode::ZeroPage, 3, Cpu::ora),
     Op::new(0x09, "ORA", AddressingMode::Immediate, 2, Cpu::ora),
@@ -224,22 +227,22 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0x15, "ORA", AddressingMode::ZeroPageX, 4, Cpu::ora),
     Op::new(0x19, "ORA", AddressingMode::AbsoluteY, 4, Cpu::ora),
     Op::new(0x1D, "ORA", AddressingMode::AbsoluteX, 4, Cpu::ora),
-    Op::new(0x48, "PHA", AddressingMode::None, 3, Cpu::pha),
-    Op::new(0x08, "PHP", AddressingMode::None, 3, Cpu::php),
-    Op::new(0x68, "PLA", AddressingMode::None, 4, Cpu::pla),
-    Op::new(0x28, "PLP", AddressingMode::None, 4, Cpu::plp),
+    Op::new(0x48, "PHA", AddressingMode::Implied, 3, Cpu::pha),
+    Op::new(0x08, "PHP", AddressingMode::Implied, 3, Cpu::php),
+    Op::new(0x68, "PLA", AddressingMode::Implied, 4, Cpu::pla),
+    Op::new(0x28, "PLP", AddressingMode::Implied, 4, Cpu::plp),
     Op::new(0x26, "ROL", AddressingMode::ZeroPage, 5, Cpu::rol),
-    Op::new(0x2A, "ROL", AddressingMode::None, 2, Cpu::rol),
+    Op::new(0x2A, "ROL", AddressingMode::Accumulator, 2, Cpu::rol),
     Op::new(0x2E, "ROL", AddressingMode::Absolute, 6, Cpu::rol),
     Op::new(0x36, "ROL", AddressingMode::ZeroPageX, 6, Cpu::rol),
     Op::new(0x3E, "ROL", AddressingMode::AbsoluteX, 7, Cpu::rol),
     Op::new(0x66, "ROR", AddressingMode::ZeroPage, 5, Cpu::ror),
-    Op::new(0x6A, "ROR", AddressingMode::None, 2, Cpu::ror),
+    Op::new(0x6A, "ROR", AddressingMode::Accumulator, 2, Cpu::ror),
     Op::new(0x6E, "ROR", AddressingMode::Absolute, 6, Cpu::ror),
     Op::new(0x76, "ROR", AddressingMode::ZeroPageX, 6, Cpu::ror),
     Op::new(0x7E, "ROR", AddressingMode::AbsoluteX, 7, Cpu::ror),
-    Op::new(0x40, "RTI", AddressingMode::None, 6, Cpu::rti),
-    Op::new(0x60, "RTS", AddressingMode::None, 6, Cpu::rts),
+    Op::new(0x40, "RTI", AddressingMode::Implied, 6, Cpu::rti),
+    Op::new(0x60, "RTS", AddressingMode::Implied, 6, Cpu::rts),
     Op::new(0xE1, "SBC", AddressingMode::IndexedIndirect, 6, Cpu::sbc),
     Op::new(0xE5, "SBC", AddressingMode::ZeroPage, 3, Cpu::sbc),
     Op::new(0xE9, "SBC", AddressingMode::Immediate, 2, Cpu::sbc),
@@ -248,9 +251,9 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0xF5, "SBC", AddressingMode::ZeroPageX, 4, Cpu::sbc),
     Op::new(0xF9, "SBC", AddressingMode::AbsoluteY, 4, Cpu::sbc),
     Op::new(0xFD, "SBC", AddressingMode::AbsoluteX, 4, Cpu::sbc),
-    Op::new(0x38, "SEC", AddressingMode::None, 2, Cpu::sec),
-    Op::new(0xF8, "SED", AddressingMode::None, 2, Cpu::sed),
-    Op::new(0x78, "SEI", AddressingMode::None, 2, Cpu::sei),
+    Op::new(0x38, "SEC", AddressingMode::Implied, 2, Cpu::sec),
+    Op::new(0xF8, "SED", AddressingMode::Implied, 2, Cpu::sed),
+    Op::new(0x78, "SEI", AddressingMode::Implied, 2, Cpu::sei),
     Op::new(0x81, "STA", AddressingMode::IndexedIndirect, 6, Cpu::sta),
     Op::new(0x85, "STA", AddressingMode::ZeroPage, 3, Cpu::sta),
     Op::new(0x8D, "STA", AddressingMode::Absolute, 4, Cpu::sta),
@@ -264,14 +267,14 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0x84, "STY", AddressingMode::ZeroPage, 3, Cpu::sty),
     Op::new(0x8C, "STY", AddressingMode::Absolute, 4, Cpu::sty),
     Op::new(0x94, "STY", AddressingMode::ZeroPageX, 4, Cpu::sty),
-    Op::new(0xAA, "TAX", AddressingMode::None, 2, Cpu::tax),
-    Op::new(0xA8, "TAY", AddressingMode::None, 2, Cpu::tay),
-    Op::new(0xBA, "TSX", AddressingMode::None, 2, Cpu::tsx),
-    Op::new(0x8A, "TXA", AddressingMode::None, 2, Cpu::txa),
-    Op::new(0x9A, "TXS", AddressingMode::None, 2, Cpu::txs),
-    Op::new(0x98, "TYA", AddressingMode::None, 2, Cpu::tya),
+    Op::new(0xAA, "TAX", AddressingMode::Implied, 2, Cpu::tax),
+    Op::new(0xA8, "TAY", AddressingMode::Implied, 2, Cpu::tay),
+    Op::new(0xBA, "TSX", AddressingMode::Implied, 2, Cpu::tsx),
+    Op::new(0x8A, "TXA", AddressingMode::Implied, 2, Cpu::txa),
+    Op::new(0x9A, "TXS", AddressingMode::Implied, 2, Cpu::txs),
+    Op::new(0x98, "TYA", AddressingMode::Implied, 2, Cpu::tya),
     // Invalid opcode for testing
-    Op::new(0xFF, "IVD", AddressingMode::None, 2, Cpu::ivd),
+    Op::new(0xFF, "IVD", AddressingMode::Implied, 2, Cpu::ivd),
 ];
 
 pub struct Cpu {
@@ -392,7 +395,10 @@ impl Cpu {
 
                 Some(addr.wrapping_add(u16::from(self.reg_y)))
             }
-            AddressingMode::None => None,
+            AddressingMode::Accumulator => None,
+            AddressingMode::Implied => {
+                panic!("Implied addressing mode does not have an operand address")
+            }
         }
     }
 
@@ -518,8 +524,13 @@ impl Cpu {
         self.status.insert(Status::BREAK_COMMAND);
     }
 
-    fn bvc(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn bvc(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("BVC requires an address operand");
+        if !self.status.contains(Status::OVERFLOW) {
+            self.pc = addr;
+        }
     }
 
     fn bvs(&mut self, _op: &'static Op) {
