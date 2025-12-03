@@ -46,6 +46,39 @@ impl Default for Memory {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum AddressingMode {
+    /// #$01
+    Immediate,
+
+    /// $01
+    ZeroPage,
+
+    /// $01,X
+    ZeroPageX,
+
+    /// $01,Y
+    ZeroPageY,
+
+    /// $0102
+    Absolute,
+
+    /// $0102,X
+    AbsoluteX,
+
+    /// $0102,Y
+    AbsoluteY,
+
+    /// ($01, X)
+    IndexedIndirect,
+
+    /// ($01), Y
+    IndirectIndexed,
+
+    /// For instructions that do not use addressing modes
+    None,
+}
+
 pub struct CPU {
     pub reg_a: u8,
     pub reg_x: u8,
@@ -90,10 +123,7 @@ impl CPU {
                 0x00 => break,
 
                 // LDA Immediate
-                0xa9 => {
-                    let value = self.read_pc_next();
-                    self.lda(value);
-                }
+                0xa9 => self.lda(AddressingMode::Immediate),
 
                 // TAX
                 0xaa => self.tax(),
@@ -106,14 +136,69 @@ impl CPU {
         }
     }
 
-    fn read_pc_next(&mut self) -> u8 {
-        let byte = self.mem.read(self.pc);
+    fn pc_next(&mut self) -> u16 {
+        let pc = self.pc;
         self.pc += 1;
-        byte
+        pc
     }
 
-    fn lda(&mut self, value: u8) {
-        self.reg_a = value;
+    fn read_pc_next(&mut self) -> u8 {
+        let pc = self.pc_next();
+
+        self.mem.read(pc)
+    }
+
+    fn read_pc_u16_next(&mut self) -> u16 {
+        // Increment PC twice to read two bytes
+        let pc = self.pc_next();
+        let _ = self.pc_next();
+
+        self.mem.read_u16(pc)
+    }
+
+    fn operand_addr_next(&mut self, mode: AddressingMode) -> u16 {
+        match mode {
+            AddressingMode::Immediate => self.pc_next(),
+            AddressingMode::ZeroPage => u16::from(self.read_pc_next()),
+            AddressingMode::ZeroPageX => {
+                let addr = self.read_pc_next();
+                u16::from(addr.wrapping_add(self.reg_x))
+            }
+            AddressingMode::ZeroPageY => {
+                let addr = self.read_pc_next();
+                u16::from(addr.wrapping_add(self.reg_y))
+            }
+            AddressingMode::Absolute => {
+                let addr = self.read_pc_u16_next();
+                u16::from(self.mem.read(addr))
+            }
+            AddressingMode::AbsoluteX => {
+                let addr = self.read_pc_u16_next();
+                addr.wrapping_add(u16::from(self.reg_x))
+            }
+            AddressingMode::AbsoluteY => {
+                let addr = self.read_pc_u16_next();
+                addr.wrapping_add(u16::from(self.reg_y))
+            }
+            AddressingMode::IndexedIndirect => {
+                let base = self.read_pc_next();
+                self.mem.read_u16(u16::from(base.wrapping_add(self.reg_x)))
+            }
+            AddressingMode::IndirectIndexed => {
+                let base = self.read_pc_next();
+                self.mem
+                    .read_u16(u16::from(base))
+                    .wrapping_add(u16::from(self.reg_y))
+            }
+            AddressingMode::None => {
+                panic!("Addressing mode 'None' does not have an operand address")
+            }
+        }
+    }
+
+    fn lda(&mut self, mode: AddressingMode) {
+        let addr = self.operand_addr_next(mode);
+        self.reg_a = self.mem.read(addr);
         self.update_status(self.reg_a);
     }
 
