@@ -561,8 +561,15 @@ impl Cpu {
         self.status.remove(Status::OVERFLOW);
     }
 
-    fn cmp(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn cmp(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("CMP requires an address operand");
+        let value = self.mem.read(addr);
+
+        self.status.set(Status::CARRY, self.reg_a >= value);
+        self.status.set(Status::ZERO, self.reg_a == value);
+        self.status.set(Status::ZERO, value & SIGN_BIT != 0);
     }
 
     fn cpx(&mut self, _op: &'static Op) {
