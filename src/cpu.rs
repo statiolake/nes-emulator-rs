@@ -543,19 +543,22 @@ impl Cpu {
     }
 
     fn clc(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.status.remove(Status::CARRY);
     }
 
-    fn cld(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn cld(&mut self, op: &'static Op) {
+        panic!(
+            "op {:?} is not supported; decimal mode is not supported",
+            op.name
+        )
     }
 
     fn cli(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.status.remove(Status::INTERRUPT_DISABLE);
     }
 
     fn clv(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.status.remove(Status::OVERFLOW);
     }
 
     fn cmp(&mut self, _op: &'static Op) {
