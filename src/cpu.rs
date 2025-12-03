@@ -122,8 +122,15 @@ impl CPU {
                 // BRK
                 0x00 => break,
 
-                // LDA Immediate
+                // LDA
                 0xa9 => self.lda(AddressingMode::Immediate),
+                0xa5 => self.lda(AddressingMode::ZeroPage),
+                0xb5 => self.lda(AddressingMode::ZeroPageX),
+                0xad => self.lda(AddressingMode::Absolute),
+                0xbd => self.lda(AddressingMode::AbsoluteX),
+                0xb9 => self.lda(AddressingMode::AbsoluteY),
+                0xa1 => self.lda(AddressingMode::IndexedIndirect),
+                0xb1 => self.lda(AddressingMode::IndirectIndexed),
 
                 // TAX
                 0xaa => self.tax(),
@@ -290,5 +297,16 @@ mod test {
         cpu.run();
 
         assert_eq!(cpu.reg_x, 1)
+    }
+
+    #[test]
+    fn test_lda_from_memory() {
+        let mut cpu = CPU::new();
+        cpu.load(&[0xa5, 0x10, 0x00]);
+        cpu.mem.write(0x10, 0x55);
+        cpu.reset();
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x55);
     }
 }
