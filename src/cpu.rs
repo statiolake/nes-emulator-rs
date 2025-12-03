@@ -706,7 +706,10 @@ impl Cpu {
             .operand_addr_next(op.mode)
             .expect("LDA requires an address operand");
         self.reg_a = self.mem.read(addr);
-        self.update_status(self.reg_a);
+
+        self.status.set(Status::ZERO, self.reg_a == 0);
+        self.status
+            .set(Status::NEGATIVE, self.reg_a & SIGN_BIT != 0);
     }
 
     fn ldx(&mut self, _op: &'static Op) {
