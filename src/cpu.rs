@@ -916,11 +916,19 @@ impl Cpu {
     }
 
     fn tax(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let result = self.reg_a;
+        self.reg_x = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn tay(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let result = self.reg_a;
+        self.reg_y = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn tsx(&mut self, _op: &'static Op) {
