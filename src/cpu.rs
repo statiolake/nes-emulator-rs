@@ -758,8 +758,16 @@ impl Cpu {
 
     fn nop(&mut self, _op: &'static Op) {}
 
-    fn ora(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn ora(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("ORA requires an address operand");
+        let value = self.mem.read(addr);
+        let result = self.reg_a | value;
+        self.reg_a = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn pha(&mut self, _op: &'static Op) {
