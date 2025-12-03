@@ -606,29 +606,29 @@ impl Cpu {
 
         self.status.set(Status::CARRY, self.reg_a >= value);
         self.status.set(Status::ZERO, self.reg_a == value);
-        self.status.set(Status::ZERO, value & SIGN_BIT != 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn cpx(&mut self, op: &'static Op) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("CMP requires an address operand");
+            .expect("CPX requires an address operand");
         let value = self.mem.read(addr);
 
         self.status.set(Status::CARRY, self.reg_x >= value);
         self.status.set(Status::ZERO, self.reg_x == value);
-        self.status.set(Status::ZERO, value & SIGN_BIT != 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn cpy(&mut self, op: &'static Op) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("CMP requires an address operand");
+            .expect("CPY requires an address operand");
         let value = self.mem.read(addr);
 
         self.status.set(Status::CARRY, self.reg_y >= value);
         self.status.set(Status::ZERO, self.reg_y == value);
-        self.status.set(Status::ZERO, value & SIGN_BIT != 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn dec(&mut self, op: &'static Op) {
