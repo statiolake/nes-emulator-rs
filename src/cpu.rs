@@ -756,9 +756,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn nop(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
-    }
+    fn nop(&mut self, _op: &'static Op) {}
 
     fn ora(&mut self, _op: &'static Op) {
         todo!("op {:?} not yet implemented", _op.name)
