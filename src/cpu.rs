@@ -622,8 +622,17 @@ impl Cpu {
             .set(Status::NEGATIVE, self.reg_y & SIGN_BIT != 0);
     }
 
-    fn eor(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn eor(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("EOR requires an address operand");
+        let value = self.mem.read(addr);
+
+        let result = self.reg_a ^ value;
+        self.reg_a = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn inc(&mut self, _op: &'static Op) {
