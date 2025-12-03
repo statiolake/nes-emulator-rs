@@ -2368,6 +2368,7 @@ mod test {
     // ===== SED (Set Decimal) Tests =====
 
     #[test]
+    #[should_panic] // decimal mode is not supported on NES
     fn test_0xf8_sed() {
         let mut cpu = Cpu::new();
         cpu.load(&[0xf8, 0x00]);
@@ -2398,6 +2399,7 @@ mod test {
     // ===== CLD (Clear Decimal) Tests =====
 
     #[test]
+    #[should_panic] // decimal mode is not supported on NES
     fn test_0xd8_cld() {
         let mut cpu = Cpu::new();
         cpu.load(&[0xd8, 0x00]);
