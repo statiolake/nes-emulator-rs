@@ -330,6 +330,7 @@ impl Cpu {
 
     pub fn run(&mut self) {
         while !self.status.contains(Status::BREAK_COMMAND) {
+            eprintln!("PC: {:x}", self.pc);
             let op_code = self.read_pc_next();
             let Some(op) = self.op_table[op_code as usize] else {
                 panic!("Invalid opcode {op_code:x} at PC {:#06x}", self.pc - 1);
@@ -708,7 +709,7 @@ impl Cpu {
             .operand_addr_next(op.mode)
             .expect("JSR requires an address operand");
 
-        self.stack_push_u16(self.pc);
+        self.stack_push_u16(self.pc.wrapping_sub(1));
 
         self.pc = addr;
     }
@@ -854,7 +855,7 @@ impl Cpu {
     }
 
     fn rts(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.pc = self.stack_pop_u16().wrapping_add(1);
     }
 
     fn sbc(&mut self, _op: &'static Op) {
@@ -1680,6 +1681,10 @@ mod test {
         cpu.load(&[0x20, 0x20, 0x80, 0x00]);
         cpu.reset();
         cpu.run();
+
+        // return_addr should be the last byte of the JSR instruction
+        let return_addr = cpu.stack_pop_u16();
+        assert_eq!(return_addr, 0x8002);
     }
 
     // ===== LDA (Load Accumulator) Tests =====
@@ -2090,9 +2095,19 @@ mod test {
     #[test]
     fn test_0x60_rts() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0x60, 0x00]);
+        // RTS pops PC from stack
+        // Load program with RTS instruction at 0x8000
+        cpu.load(&[0x60, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff]);
         cpu.reset();
+
+        // Set up stack with return address (minus one)
+        cpu.mem.write_u16(0x01fe, 0x8004);
+        cpu.sp = 0xfd;
+
         cpu.run();
+
+        // Verify RTS restored the PC correctly (and then executed BRK)
+        assert_eq!(cpu.pc, 0x8006);
     }
 
     // ===== SBC (Subtract with Carry) Tests =====
