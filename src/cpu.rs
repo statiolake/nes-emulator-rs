@@ -636,16 +636,31 @@ impl Cpu {
     }
 
     fn inc(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("INC requires an address operand");
+        let value = self.mem.read(addr);
+        let result = value.wrapping_add(1);
+        self.mem.write(addr, result);
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn inx(&mut self, _op: &'static Op) {
         self.reg_x = self.reg_x.wrapping_add(1);
-        self.update_status(self.reg_x);
+
+        self.status.set(Status::ZERO, self.reg_x == 0);
+        self.status
+            .set(Status::NEGATIVE, self.reg_x & SIGN_BIT != 0);
     }
 
     fn iny(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.reg_y = self.reg_y.wrapping_add(1);
+
+        self.status.set(Status::ZERO, self.reg_y == 0);
+        self.status
+            .set(Status::NEGATIVE, self.reg_y & SIGN_BIT != 0);
     }
 
     fn jmp(&mut self, _op: &'static Op) {
