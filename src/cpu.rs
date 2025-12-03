@@ -724,7 +724,14 @@ impl Cpu {
     }
 
     fn ldy(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("LDY requires an address operand");
+        let value = self.mem.read(addr);
+        self.reg_y = value;
+
+        self.status.set(Status::ZERO, value == 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn lsr(&mut self, _op: &'static Op) {
