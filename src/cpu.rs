@@ -460,7 +460,8 @@ impl Cpu {
             self.reg_a
         };
 
-        let (result, carry) = value.overflowing_shl(1);
+        let carry = value & 0b1000_0000 != 0;
+        let result = value.wrapping_shl(1);
         if let Some(addr) = addr {
             self.mem.write(addr, result);
         } else {
@@ -734,8 +735,25 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn lsr(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn lsr(&mut self, op: &'static Op) {
+        let addr = self.operand_addr_next(op.mode);
+        let value = if let Some(addr) = addr {
+            self.mem.read(addr)
+        } else {
+            self.reg_a
+        };
+
+        let carry = value & 0b0000_0001 != 0;
+        let result = value >> 1;
+        if let Some(addr) = addr {
+            self.mem.write(addr, result);
+        } else {
+            self.reg_a = result;
+        }
+
+        self.status.set(Status::CARRY, carry);
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn nop(&mut self, _op: &'static Op) {
