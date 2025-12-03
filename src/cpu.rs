@@ -397,7 +397,7 @@ impl Cpu {
     fn adc(&mut self, op: &'static Op) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("ADC requires an operand address");
+            .expect("ADC requires an address operand");
         let reg_a = self.reg_a;
         let value = self.mem.read(addr);
         let (result, carry) = self.reg_a.overflowing_add(value);
@@ -415,7 +415,7 @@ impl Cpu {
     fn and(&mut self, op: &'static Op) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("AND requires an operand address");
+            .expect("AND requires an address operand");
         let reg_a = self.reg_a;
         let value = self.mem.read(addr);
         let result = reg_a & value;
@@ -445,8 +445,13 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn bcc(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn bcc(&mut self, op: &'static Op) {
+        if !self.status.contains(Status::CARRY) {
+            let addr = self
+                .operand_addr_next(op.mode)
+                .expect("BCC requires an address operand");
+            self.pc = addr;
+        }
     }
 
     fn bcs(&mut self, _op: &'static Op) {
@@ -553,7 +558,7 @@ impl Cpu {
     fn lda(&mut self, op: &'static Op) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("LDA requires an operand address");
+            .expect("LDA requires an address operand");
         self.reg_a = self.mem.read(addr);
         self.update_status(self.reg_a);
     }
@@ -629,7 +634,7 @@ impl Cpu {
     fn sta(&mut self, op: &'static Op) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("STA requires an operand address");
+            .expect("STA requires an address operand");
         self.mem.write(addr, self.reg_a);
     }
 
