@@ -801,8 +801,7 @@ impl Cpu {
     }
 
     fn tax(&mut self, _op: &'static Op) {
-        self.reg_x = self.reg_a;
-        self.update_status(self.reg_x);
+        todo!("op {:?} not yet implemented", _op.name)
     }
 
     fn tay(&mut self, _op: &'static Op) {
@@ -827,14 +826,6 @@ impl Cpu {
 
     fn ivd(&mut self, _op: &'static Op) {
         panic!("Invalid opcode encountered");
-    }
-
-    fn update_status(&mut self, result: u8) {
-        // zero
-        self.status.set(Status::ZERO, result == 0);
-
-        // negative
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 }
 
