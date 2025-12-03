@@ -1,4 +1,5 @@
 bitflags::bitflags! {
+    #[derive(Debug, Eq, PartialEq)]
     pub struct Status: u8 {
         const CARRY = 0b0000_0001;
         const ZERO = 0b0000_0010;
@@ -776,7 +777,8 @@ impl Cpu {
     }
 
     fn php(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let value = self.status.bits();
+        self.stack_push(value);
     }
 
     fn pla(&mut self, _op: &'static Op) {
@@ -788,7 +790,8 @@ impl Cpu {
     }
 
     fn plp(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let value = self.stack_pop();
+        self.status = Status::from_bits_truncate(value);
     }
 
     fn rol(&mut self, _op: &'static Op) {
@@ -1934,9 +1937,20 @@ mod test {
     #[test]
     fn test_0x28_plp() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0x28, 0x00]);
+        // Status::BREAK_COMMAND is set in the stack so the last op 0xff should not be executed
+        cpu.load(&[0x28, 0xff]);
+        cpu.mem.write(
+            0x01ff,
+            (Status::INTERRUPT_DISABLE | Status::BREAK_COMMAND).bits(),
+        );
         cpu.reset();
+        cpu.sp = 0xfe;
         cpu.run();
+
+        assert_eq!(
+            cpu.status,
+            Status::INTERRUPT_DISABLE | Status::BREAK_COMMAND
+        );
     }
 
     // ===== ROL (Rotate Left) Tests =====
