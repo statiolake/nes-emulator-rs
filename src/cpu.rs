@@ -1,7 +1,12 @@
 bitflags::bitflags! {
     pub struct Status: u8 {
+        const CARRY = 0b0000_0001;
         const ZERO = 0b0000_0010;
-        const NEGATIVE = 0b1000_0000;
+        const INTERRUPT_DISABLE = 0b0000_0100;
+        // const DECIMAL_MODE = 0b0000_1000; // not supported on NES
+        const BREAK_COMMAND = 0b0001_0000;
+        const OVERFLOW = 0b0010_0000;
+        const NEGATIVE = 0b0100_0000;
     }
 }
 
@@ -625,12 +630,14 @@ impl Cpu {
     }
 
     fn update_status(&mut self, result: u8) {
+        // zero
         if result == 0 {
             self.status |= Status::ZERO;
         } else {
             self.status &= !Status::ZERO;
         }
 
+        // negative
         if result & 0b1000_0000 != 0 {
             self.status |= Status::NEGATIVE;
         } else {
