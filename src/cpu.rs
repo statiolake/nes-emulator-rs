@@ -442,14 +442,17 @@ impl Cpu {
         let reg_a = self.reg_a;
         let value = self.mem.read(addr);
         let (result, carry) = self.reg_a.overflowing_add(value);
+
+        // To check overflow, emulate the result in i32 space and check the sign differs
+        let result_signum = if result & SIGN_BIT != 0 { -1 } else { 1 };
+        let result_i32 = (reg_a as i8 as i32) + (value as i8 as i32);
+        let overflow = result_i32.signum() * result_signum < 0;
+
         self.reg_a = result;
 
         self.status.set(Status::CARRY, carry);
         self.status.set(Status::ZERO, result == 0);
-        self.status.set(
-            Status::OVERFLOW,
-            result & SIGN_BIT != 0 && reg_a.max(value) < SIGN_BIT,
-        );
+        self.status.set(Status::OVERFLOW, overflow);
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
@@ -859,7 +862,21 @@ impl Cpu {
     }
 
     fn sbc(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("SBC requires an address operand");
+        let value = self.mem.read(addr);
+        let (result, borrow) = self.reg_a.overflowing_sub(value);
+        let result_signum = if result & SIGN_BIT != 0 { -1 } else { 1 };
+        let result_i32 = (self.reg_a as i8 as i32) - (value as i8 as i32);
+        let overflow = result_i32.signum() * result_signum < 0;
+
+        self.reg_a = result;
+
+        self.status.set(Status::CARRY, !borrow);
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::OVERFLOW, overflow);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn sec(&mut self, _op: &'static Op) {
@@ -1040,6 +1057,90 @@ mod test {
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x50);
+    }
+
+    #[test]
+    fn test_0x69_adc_carry_flag() {
+        // Carry flag is set when addition overflows (result > 255)
+        // 0xFF (255) + 0x02 (2) = 0x101 (257 unsigned) -> Carry set, result 0x01
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x69, 0x02, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0xff;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x01);
+        assert!(cpu.status.contains(Status::CARRY));
+    }
+
+    #[test]
+    fn test_0x69_adc_no_carry_flag() {
+        // Carry flag is not set when addition doesn't overflow (result <= 255)
+        // 0x50 (80) + 0x50 (80) = 0xA0 (160) -> No carry
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x69, 0x50, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0xa0);
+        assert!(!cpu.status.contains(Status::CARRY));
+    }
+
+    #[test]
+    fn test_0x69_adc_overflow_positive_plus_positive() {
+        // Overflow occurs when adding two positive numbers results in a negative number
+        // 0x50 (80 as i8) + 0x40 (64 as i8) = 0x90 (-112 as i8) -> Overflow
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x69, 0x40, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x90);
+        assert!(cpu.status.contains(Status::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0x69_adc_overflow_negative_plus_negative() {
+        // Overflow occurs when adding two negative numbers results in a positive number
+        // 0xB0 (-80 as i8) + 0xC0 (-64 as i8) = 0x70 (112 as i8) -> Overflow
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x69, 0xc0, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0xb0;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x70);
+        assert!(cpu.status.contains(Status::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0x69_adc_no_overflow_positive_plus_negative() {
+        // No overflow when adding positive and negative numbers
+        // 0x50 (80 as i8) + 0xD0 (-48 as i8) = 0x20 (32 as i8)
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x69, 0xd0, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x20);
+        assert!(!cpu.status.contains(Status::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0x69_adc_no_overflow_positive_plus_positive_no_sign_change() {
+        // No overflow when adding positive numbers that stay positive
+        // 0x30 (48 as i8) + 0x20 (32 as i8) = 0x50 (80 as i8) - both positive, stays positive
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x69, 0x20, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x30;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x50);
+        assert!(!cpu.status.contains(Status::OVERFLOW));
     }
 
     // ===== AND (Logical AND) Tests =====
@@ -2139,6 +2240,90 @@ mod test {
         cpu.reset();
         cpu.reg_a = 0x60;
         cpu.run();
+    }
+
+    #[test]
+    fn test_0xe9_sbc_carry_flag_borrow() {
+        // In 6502, SBC uses carry as borrow. Carry clear means borrow occurred.
+        // 0x50 (80) - 0xFF (255) requires borrow, so carry is cleared
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xe9, 0xff, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        // Result: 0x50 - 0xFF - 1 (borrow) = 0x50
+        assert!(!cpu.status.contains(Status::CARRY));
+    }
+
+    #[test]
+    fn test_0xe9_sbc_carry_flag_no_borrow() {
+        // Carry is set when subtraction doesn't require borrow
+        // 0x50 (80) - 0x30 (48) = 0x20 (32) -> No borrow
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xe9, 0x30, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x20);
+        assert!(cpu.status.contains(Status::CARRY));
+    }
+
+    #[test]
+    fn test_0xe9_sbc_overflow_positive_minus_negative() {
+        // Overflow occurs when subtracting a negative number from a positive number results in negative
+        // 0x50 (80 as i8) - 0xC0 (-64 as i8) = 0x50 - (-64) = 0x90 (-112 as i8) -> Overflow
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xe9, 0xc0, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x90);
+        assert!(cpu.status.contains(Status::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0xe9_sbc_overflow_negative_minus_positive() {
+        // Overflow occurs when subtracting a positive number from a negative number results in positive
+        // 0xC0 (-64 as i8) - 0x50 (80 as i8) = 0xC0 - 80 = 0x70 (112 as i8) -> Overflow
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xe9, 0x50, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0xc0;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x70);
+        assert!(cpu.status.contains(Status::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0xe9_sbc_no_overflow_positive_minus_positive() {
+        // No overflow when subtracting positive from positive (both positive)
+        // 0x50 (80 as i8) - 0x20 (32 as i8) = 0x30 (48 as i8)
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xe9, 0x20, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x50;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x30);
+        assert!(!cpu.status.contains(Status::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0xe9_sbc_no_overflow_negative_minus_negative() {
+        // No overflow when subtracting negative from negative
+        // 0xD0 (-48 as i8) - 0xA0 (-96 as i8) = 0x30 (48 as i8)
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xe9, 0xa0, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0xd0;
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x30);
+        assert!(!cpu.status.contains(Status::OVERFLOW));
     }
 
     // ===== SEC (Set Carry) Tests =====
