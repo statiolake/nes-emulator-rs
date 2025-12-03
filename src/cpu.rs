@@ -902,11 +902,17 @@ impl Cpu {
     }
 
     fn stx(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("STX requires an address operand");
+        self.mem.write(addr, self.reg_x);
     }
 
     fn sty(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("STY requires an address operand");
+        self.mem.write(addr, self.reg_y);
     }
 
     fn tax(&mut self, _op: &'static Op) {
