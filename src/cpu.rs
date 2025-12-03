@@ -496,17 +496,22 @@ impl Cpu {
         }
     }
 
-    fn bne(&mut self, _op: &'static Op) {
+    fn bne(&mut self, op: &'static Op) {
         let addr = self
-            .operand_addr_next(_op.mode)
+            .operand_addr_next(op.mode)
             .expect("BNE requires an address operand");
         if !self.status.contains(Status::ZERO) {
             self.pc = addr;
         }
     }
 
-    fn bpl(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn bpl(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("BPL requires an address operand");
+        if !self.status.contains(Status::NEGATIVE) {
+            self.pc = addr;
+        }
     }
 
     fn brk(&mut self, _op: &'static Op) {
