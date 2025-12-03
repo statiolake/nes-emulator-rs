@@ -285,6 +285,7 @@ pub struct Cpu {
     pub reg_y: u8,
     pub status: Status,
     pub pc: u16,
+    pub sp: u8,
 
     pub mem: Memory,
 }
@@ -305,6 +306,7 @@ impl Cpu {
             reg_y: 0,
             status: Status::empty(),
             pc: 0,
+            sp: 0,
 
             mem: Memory::new(),
         }
@@ -316,6 +318,7 @@ impl Cpu {
         self.reg_y = 0;
         self.status = Status::empty();
         self.pc = self.mem.read_u16(0xfffc);
+        self.sp = 0xff;
     }
 
     pub fn load(&mut self, program: &[u8]) {
@@ -353,6 +356,22 @@ impl Cpu {
         let _ = self.pc_next();
 
         self.mem.read_u16(pc)
+    }
+
+    fn stack_push(&mut self, value: u8) {
+        let sp_addr = u16::from_be_bytes([0x01, self.sp]);
+        self.mem.write(sp_addr, value);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    fn stack_pop(&mut self) -> u8 {
+        if self.sp == 0xff {
+            panic!("Stack underflow");
+        }
+
+        self.sp = self.sp.wrapping_add(1);
+        let sp_addr = u16::from_be_bytes([0x01, self.sp]);
+        self.mem.read(sp_addr)
     }
 
     fn operand_addr_next(&mut self, mode: AddressingMode) -> Option<u16> {
@@ -703,7 +722,8 @@ impl Cpu {
     }
 
     fn pha(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let value = self.reg_a;
+        self.stack_push(value);
     }
 
     fn php(&mut self, _op: &'static Op) {
@@ -711,7 +731,11 @@ impl Cpu {
     }
 
     fn pla(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let value = self.stack_pop();
+        self.reg_a = value;
+
+        self.status.set(Status::ZERO, value == 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn plp(&mut self, _op: &'static Op) {
@@ -1857,8 +1881,12 @@ mod test {
     fn test_0x68_pla() {
         let mut cpu = Cpu::new();
         cpu.load(&[0x68, 0x00]);
+        cpu.mem.write(0x01ff, 0x42);
         cpu.reset();
+        cpu.sp = 0xfe;
         cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x42);
     }
 
     // ===== PLP (Pull Processor Status) Tests =====
