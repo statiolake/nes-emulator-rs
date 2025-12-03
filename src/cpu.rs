@@ -88,7 +88,7 @@ pub enum AddressingMode {
     /// ($01), Y
     IndirectIndexed,
 
-    /// For instructions that do not use addressing modes
+    /// A register or for instructions that do not use addressing modes
     None,
 }
 
@@ -350,53 +350,54 @@ impl Cpu {
         self.mem.read_u16(pc)
     }
 
-    fn operand_addr_next(&mut self, mode: AddressingMode) -> u16 {
+    fn operand_addr_next(&mut self, mode: AddressingMode) -> Option<u16> {
         match mode {
-            AddressingMode::Immediate => self.pc_next(),
-            AddressingMode::ZeroPage => u16::from(self.read_pc_next()),
+            AddressingMode::Immediate => Some(self.pc_next()),
+            AddressingMode::ZeroPage => Some(u16::from(self.read_pc_next())),
             AddressingMode::ZeroPageX => {
                 let addr = self.read_pc_next();
-                u16::from(addr.wrapping_add(self.reg_x))
+                Some(u16::from(addr.wrapping_add(self.reg_x)))
             }
             AddressingMode::ZeroPageY => {
                 let addr = self.read_pc_next();
-                u16::from(addr.wrapping_add(self.reg_y))
+                Some(u16::from(addr.wrapping_add(self.reg_y)))
             }
-            AddressingMode::Absolute => self.read_pc_u16_next(),
+            AddressingMode::Absolute => Some(self.read_pc_u16_next()),
             AddressingMode::AbsoluteX => {
                 let addr = self.read_pc_u16_next();
-                addr.wrapping_add(u16::from(self.reg_x))
+                Some(addr.wrapping_add(u16::from(self.reg_x)))
             }
             AddressingMode::AbsoluteY => {
                 let addr = self.read_pc_u16_next();
-                addr.wrapping_add(u16::from(self.reg_y))
+                Some(addr.wrapping_add(u16::from(self.reg_y)))
             }
             AddressingMode::Relative => {
                 let offset = self.read_pc_next();
-                self.pc.wrapping_add(u16::from(offset))
+                Some(self.pc.wrapping_add(u16::from(offset)))
             }
             AddressingMode::Indirect => {
                 let addr = self.read_pc_u16_next();
-                self.mem.read_u16(addr)
+                Some(self.mem.read_u16(addr))
             }
             AddressingMode::IndexedIndirect => {
                 let base = self.read_pc_next();
-                self.mem.read_u16(u16::from(base.wrapping_add(self.reg_x)))
+                let offsetted = base.wrapping_add(self.reg_x);
+                Some(self.mem.read_u16(u16::from(offsetted)))
             }
             AddressingMode::IndirectIndexed => {
                 let base = self.read_pc_next();
-                self.mem
-                    .read_u16(u16::from(base))
-                    .wrapping_add(u16::from(self.reg_y))
+                let addr = self.mem.read_u16(u16::from(base));
+
+                Some(addr.wrapping_add(u16::from(self.reg_y)))
             }
-            AddressingMode::None => {
-                panic!("Addressing mode 'None' does not have an operand address")
-            }
+            AddressingMode::None => None,
         }
     }
 
     fn adc(&mut self, op: &'static Op) {
-        let addr = self.operand_addr_next(op.mode);
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("ADC requires an operand address");
         let reg_a = self.reg_a;
         let value = self.mem.read(addr);
         let (result, carry) = self.reg_a.overflowing_add(value);
@@ -412,7 +413,9 @@ impl Cpu {
     }
 
     fn and(&mut self, op: &'static Op) {
-        let addr = self.operand_addr_next(op.mode);
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("AND requires an operand address");
         let reg_a = self.reg_a;
         let value = self.mem.read(addr);
         let result = reg_a & value;
@@ -422,8 +425,24 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn asl(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn asl(&mut self, op: &'static Op) {
+        let addr = self.operand_addr_next(op.mode);
+        let value = if let Some(addr) = addr {
+            self.mem.read(addr)
+        } else {
+            self.reg_a
+        };
+
+        let (result, carry) = value.overflowing_shl(1);
+        if let Some(addr) = addr {
+            self.mem.write(addr, result);
+        } else {
+            self.reg_a = result;
+        }
+
+        self.status.set(Status::CARRY, carry);
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn bcc(&mut self, _op: &'static Op) {
@@ -532,7 +551,9 @@ impl Cpu {
     }
 
     fn lda(&mut self, op: &'static Op) {
-        let addr = self.operand_addr_next(op.mode);
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("LDA requires an operand address");
         self.reg_a = self.mem.read(addr);
         self.update_status(self.reg_a);
     }
@@ -606,7 +627,9 @@ impl Cpu {
     }
 
     fn sta(&mut self, op: &'static Op) {
-        let addr = self.operand_addr_next(op.mode);
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("STA requires an operand address");
         self.mem.write(addr, self.reg_a);
     }
 
