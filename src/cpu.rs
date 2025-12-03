@@ -24,7 +24,8 @@ impl CPU {
 
     pub fn interpret(&mut self, program: &[u8]) {
         loop {
-            match self.read_pc_next(program) {
+            let op_code = self.read_pc_next(program);
+            match op_code {
                 // BRK
                 0x00 => break,
 
@@ -35,11 +36,12 @@ impl CPU {
                 }
 
                 // TAX
-                0xaa => {
-                    self.tax();
-                }
+                0xaa => self.tax(),
 
-                _ => todo!(),
+                // INX
+                0xe8 => self.inx(),
+
+                _ => todo!("opcode {op_code:x} not implemented"),
             }
         }
     }
@@ -57,6 +59,11 @@ impl CPU {
 
     fn tax(&mut self) {
         self.reg_x = self.reg_a;
+        self.update_status(self.reg_x);
+    }
+
+    fn inx(&mut self) {
+        self.reg_x = self.reg_x.wrapping_add(1);
         self.update_status(self.reg_x);
     }
 
@@ -108,5 +115,22 @@ mod test {
         cpu.interpret(&[0xaa, 0x00]);
 
         assert_eq!(cpu.reg_x, 10)
+    }
+
+    #[test]
+    fn test_5_ops_working_together() {
+        let mut cpu = CPU::new();
+        cpu.interpret(&[0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
+
+        assert_eq!(cpu.reg_x, 0xc1)
+    }
+
+    #[test]
+    fn test_inx_overflow() {
+        let mut cpu = CPU::new();
+        cpu.reg_x = 0xff;
+        cpu.interpret(&[0xe8, 0xe8, 0x00]);
+
+        assert_eq!(cpu.reg_x, 1)
     }
 }
