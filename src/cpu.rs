@@ -273,8 +273,6 @@ pub const CPU_OPS: &[Op] = &[
 pub struct Cpu {
     pub op_table: Vec<Option<&'static Op>>,
 
-    pub halted: bool,
-
     pub reg_a: u8,
     pub reg_x: u8,
     pub reg_y: u8,
@@ -294,8 +292,6 @@ impl Cpu {
 
         Cpu {
             op_table,
-
-            halted: false,
 
             reg_a: 0,
             reg_x: 0,
@@ -322,7 +318,7 @@ impl Cpu {
     }
 
     pub fn run(&mut self) {
-        while !self.halted {
+        while !self.status.contains(Status::BREAK_COMMAND) {
             let op_code = self.read_pc_next();
             let Some(op) = self.op_table[op_code as usize] else {
                 panic!("Invalid opcode {op_code:x} at PC {:#06x}", self.pc - 1);
@@ -441,7 +437,7 @@ impl Cpu {
     }
 
     fn brk(&mut self, _op: &'static Op) {
-        self.halted = true;
+        self.status.insert(Status::BREAK_COMMAND);
     }
 
     fn bvc(&mut self, _op: &'static Op) {
@@ -631,18 +627,10 @@ impl Cpu {
 
     fn update_status(&mut self, result: u8) {
         // zero
-        if result == 0 {
-            self.status |= Status::ZERO;
-        } else {
-            self.status &= !Status::ZERO;
-        }
+        self.status.set(Status::ZERO, result == 0);
 
         // negative
-        if result & 0b1000_0000 != 0 {
-            self.status |= Status::NEGATIVE;
-        } else {
-            self.status &= !Status::NEGATIVE;
-        }
+        self.status.set(Status::NEGATIVE, result & 0b1000_0000 != 0);
     }
 }
 
@@ -954,8 +942,6 @@ mod test {
         cpu.load(&[0x00]);
         cpu.reset();
         cpu.run();
-
-        assert!(cpu.halted);
     }
 
     // ===== CMP (Compare) Tests =====
@@ -1287,8 +1273,6 @@ mod test {
         cpu.reset();
         let pc_before = cpu.pc;
         cpu.run();
-
-        assert!(cpu.halted);
     }
 
     #[test]
@@ -1298,8 +1282,6 @@ mod test {
         cpu.mem.write_u16(0x10, 0x8000);
         cpu.reset();
         cpu.run();
-
-        assert!(cpu.halted);
     }
 
     // ===== JSR (Jump to Subroutine) Tests =====
