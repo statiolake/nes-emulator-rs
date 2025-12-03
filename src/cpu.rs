@@ -664,7 +664,10 @@ impl Cpu {
     }
 
     fn jmp(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("JMP requires an address operand");
+        self.pc = addr;
     }
 
     fn jsr(&mut self, _op: &'static Op) {
@@ -1540,17 +1543,17 @@ mod test {
     #[test]
     fn test_0x4c_jmp_absolute() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0x4c, 0x20, 0x80, 0x00]);
+        cpu.load(&[0x4c, 0x20, 0x80, 0xff]);
+        cpu.mem.write(0x8020, 0x00);
         cpu.reset();
-        let pc_before = cpu.pc;
         cpu.run();
     }
 
     #[test]
     fn test_0x6c_jmp_indirect() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0x6c, 0x10, 0x00, 0x00]);
-        cpu.mem.write_u16(0x10, 0x8000);
+        cpu.load(&[0x6c, 0x10, 0xff, 0x00]);
+        cpu.mem.write_u16(0x10, 0x8002);
         cpu.reset();
         cpu.run();
     }
