@@ -411,8 +411,15 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn and(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn and(&mut self, op: &'static Op) {
+        let addr = self.operand_addr_next(op.mode);
+        let reg_a = self.reg_a;
+        let value = self.mem.read(addr);
+        let result = reg_a & value;
+        self.reg_a = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn asl(&mut self, _op: &'static Op) {
