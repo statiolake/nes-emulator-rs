@@ -816,8 +816,26 @@ impl Cpu {
         self.status.set(Status::CARRY, next_carry);
     }
 
-    fn ror(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn ror(&mut self, op: &'static Op) {
+        let addr = self.operand_addr_next(op.mode);
+        let value = if let Some(addr) = addr {
+            self.mem.read(addr)
+        } else {
+            self.reg_a
+        };
+        let next_carry = value & 0b0000_0001 != 0;
+        let mut result = value >> 1;
+        if self.status.contains(Status::CARRY) {
+            result |= 0b1000_0000;
+        }
+
+        if let Some(addr) = addr {
+            self.mem.write(addr, result);
+        } else {
+            self.reg_a = result;
+        }
+
+        self.status.set(Status::CARRY, next_carry);
     }
 
     fn rti(&mut self, _op: &'static Op) {
