@@ -932,7 +932,11 @@ impl Cpu {
     }
 
     fn tsx(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let result = self.sp;
+        self.reg_x = result;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn txa(&mut self, _op: &'static Op) {
