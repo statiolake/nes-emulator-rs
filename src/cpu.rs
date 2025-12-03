@@ -270,6 +270,8 @@ pub const CPU_OPS: &[Op] = &[
     Op::new(0x8A, "TXA", AddressingMode::None, 2, Cpu::txa),
     Op::new(0x9A, "TXS", AddressingMode::None, 2, Cpu::txs),
     Op::new(0x98, "TYA", AddressingMode::None, 2, Cpu::tya),
+    // Invalid opcode for testing
+    Op::new(0xFF, "IVD", AddressingMode::None, 2, Cpu::ivd),
 ];
 
 pub struct Cpu {
@@ -446,16 +448,21 @@ impl Cpu {
     }
 
     fn bcc(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("BCC requires an address operand");
         if !self.status.contains(Status::CARRY) {
-            let addr = self
-                .operand_addr_next(op.mode)
-                .expect("BCC requires an address operand");
             self.pc = addr;
         }
     }
 
-    fn bcs(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn bcs(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("BCS requires an address operand");
+        if self.status.contains(Status::CARRY) {
+            self.pc = addr;
+        }
     }
 
     fn beq(&mut self, _op: &'static Op) {
@@ -671,6 +678,10 @@ impl Cpu {
         todo!("op {:?} not yet implemented", _op.name)
     }
 
+    fn ivd(&mut self, _op: &'static Op) {
+        panic!("Invalid opcode encountered");
+    }
+
     fn update_status(&mut self, result: u8) {
         // zero
         self.status.set(Status::ZERO, result == 0);
@@ -879,16 +890,39 @@ mod test {
 
     // ===== Branch Instructions Tests =====
 
+    // BEQ (Branch if Equal - ZERO flag set)
     #[test]
     fn test_0xf0_beq_branch_taken() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0xf0, 0x02, 0x00]);
+        cpu.load(&[0xf0, 0x02, 0xff, 0xff, 0x00]);
         cpu.reset();
-        cpu.status = Status::ZERO;
-        let pc_before = cpu.pc;
+        cpu.status.insert(Status::ZERO);
         cpu.run();
 
-        assert!(cpu.pc != pc_before);
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
+    }
+
+    #[test]
+    fn test_0xf0_beq_branch_not_taken() {
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xf0, 0x02, 0x00]);
+        cpu.reset();
+        cpu.status = Status::empty();
+        cpu.run();
+
+        assert!(!cpu.status.contains(Status::ZERO));
+    }
+
+    // BNE (Branch if Not Equal - ZERO flag clear)
+    #[test]
+    fn test_0xd0_bne_branch_taken() {
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xd0, 0x02, 0xff, 0xff, 0x00]);
+        cpu.reset();
+        cpu.status = Status::empty();
+        cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
     }
 
     #[test]
@@ -896,18 +930,45 @@ mod test {
         let mut cpu = Cpu::new();
         cpu.load(&[0xd0, 0x02, 0x00]);
         cpu.reset();
+        cpu.status.insert(Status::ZERO);
         cpu.run();
 
-        assert!(cpu.status.is_empty());
+        assert!(cpu.status.contains(Status::ZERO));
     }
 
+    // BCC (Branch if Carry Clear - CARRY flag clear)
     #[test]
     fn test_0x90_bcc_branch_taken() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0x90, 0x02, 0x00]);
+        cpu.load(&[0x90, 0x02, 0xff, 0xff, 0x00]);
         cpu.reset();
         cpu.status = Status::empty();
         cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
+    }
+
+    #[test]
+    fn test_0x90_bcc_branch_not_taken() {
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x90, 0x02, 0x00]);
+        cpu.reset();
+        cpu.status.insert(Status::CARRY);
+        cpu.run();
+
+        assert!(cpu.status.contains(Status::CARRY));
+    }
+
+    // BCS (Branch if Carry Set - CARRY flag set)
+    #[test]
+    fn test_0xb0_bcs_branch_taken() {
+        let mut cpu = Cpu::new();
+        cpu.load(&[0xb0, 0x02, 0xff, 0xff, 0x00]);
+        cpu.reset();
+        cpu.status.insert(Status::CARRY);
+        cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
     }
 
     #[test]
@@ -915,16 +976,41 @@ mod test {
         let mut cpu = Cpu::new();
         cpu.load(&[0xb0, 0x02, 0x00]);
         cpu.reset();
+        cpu.status = Status::empty();
         cpu.run();
     }
 
+    // BMI (Branch if Minus - NEGATIVE flag set)
     #[test]
     fn test_0x30_bmi_branch_taken() {
         let mut cpu = Cpu::new();
+        cpu.load(&[0x30, 0x02, 0xff, 0xff, 0x00]);
+        cpu.reset();
+        cpu.status.insert(Status::NEGATIVE);
+        cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
+    }
+
+    #[test]
+    fn test_0x30_bmi_branch_not_taken() {
+        let mut cpu = Cpu::new();
         cpu.load(&[0x30, 0x02, 0x00]);
         cpu.reset();
-        cpu.status = Status::NEGATIVE;
+        cpu.status = Status::empty();
         cpu.run();
+    }
+
+    // BPL (Branch if Plus - NEGATIVE flag clear)
+    #[test]
+    fn test_0x10_bpl_branch_taken() {
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x10, 0x02, 0xff, 0xff, 0x00]);
+        cpu.reset();
+        cpu.status = Status::empty();
+        cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
     }
 
     #[test]
@@ -932,16 +1018,45 @@ mod test {
         let mut cpu = Cpu::new();
         cpu.load(&[0x10, 0x02, 0x00]);
         cpu.reset();
-        cpu.status = Status::NEGATIVE;
+        cpu.status.insert(Status::NEGATIVE);
         cpu.run();
+
+        assert!(cpu.status.contains(Status::NEGATIVE));
     }
 
+    // BVC (Branch if Overflow Clear - OVERFLOW flag clear)
     #[test]
     fn test_0x50_bvc_branch_taken() {
         let mut cpu = Cpu::new();
+        cpu.load(&[0x50, 0x02, 0xff, 0xff, 0x00]);
+        cpu.reset();
+        cpu.status = Status::empty();
+        cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
+    }
+
+    #[test]
+    fn test_0x50_bvc_branch_not_taken() {
+        let mut cpu = Cpu::new();
         cpu.load(&[0x50, 0x02, 0x00]);
         cpu.reset();
+        cpu.status.insert(Status::OVERFLOW);
         cpu.run();
+
+        assert!(cpu.status.contains(Status::OVERFLOW));
+    }
+
+    // BVS (Branch if Overflow Set - OVERFLOW flag set)
+    #[test]
+    fn test_0x70_bvs_branch_taken() {
+        let mut cpu = Cpu::new();
+        cpu.load(&[0x70, 0x02, 0xff, 0xff, 0x00]);
+        cpu.reset();
+        cpu.status.insert(Status::OVERFLOW);
+        cpu.run();
+
+        // If branch is not taken by bug, CPU will panic due to unknown opcode 0xff
     }
 
     #[test]
@@ -949,6 +1064,7 @@ mod test {
         let mut cpu = Cpu::new();
         cpu.load(&[0x70, 0x02, 0x00]);
         cpu.reset();
+        cpu.status = Status::empty();
         cpu.run();
     }
 
