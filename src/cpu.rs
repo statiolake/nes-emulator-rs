@@ -948,7 +948,7 @@ impl Cpu {
     }
 
     fn txs(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.sp = self.reg_x;
     }
 
     fn tya(&mut self, _op: &'static Op) {
