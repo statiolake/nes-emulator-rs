@@ -132,6 +132,15 @@ impl CPU {
                 0xa1 => self.lda(AddressingMode::IndexedIndirect),
                 0xb1 => self.lda(AddressingMode::IndirectIndexed),
 
+                // STA
+                0x85 => self.sta(AddressingMode::ZeroPage),
+                0x95 => self.sta(AddressingMode::ZeroPageX),
+                0x8d => self.sta(AddressingMode::Absolute),
+                0x9d => self.sta(AddressingMode::AbsoluteX),
+                0x99 => self.sta(AddressingMode::AbsoluteY),
+                0x81 => self.sta(AddressingMode::IndexedIndirect),
+                0x91 => self.sta(AddressingMode::IndirectIndexed),
+
                 // TAX
                 0xaa => self.tax(),
 
@@ -207,6 +216,11 @@ impl CPU {
         let addr = self.operand_addr_next(mode);
         self.reg_a = self.mem.read(addr);
         self.update_status(self.reg_a);
+    }
+
+    fn sta(&mut self, mode: AddressingMode) {
+        let addr = self.operand_addr_next(mode);
+        self.mem.write(addr, self.reg_a);
     }
 
     fn tax(&mut self) {
