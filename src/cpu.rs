@@ -601,14 +601,25 @@ impl Cpu {
         let value = self.mem.read(addr);
         let result = value.wrapping_sub(1);
         self.mem.write(addr, result);
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn dex(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.reg_x = self.reg_x.wrapping_sub(1);
+
+        self.status.set(Status::ZERO, self.reg_x == 0);
+        self.status
+            .set(Status::NEGATIVE, self.reg_x & SIGN_BIT != 0);
     }
 
     fn dey(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.reg_y = self.reg_y.wrapping_sub(1);
+
+        self.status.set(Status::ZERO, self.reg_y == 0);
+        self.status
+            .set(Status::NEGATIVE, self.reg_y & SIGN_BIT != 0);
     }
 
     fn eor(&mut self, _op: &'static Op) {
