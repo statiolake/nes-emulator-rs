@@ -475,7 +475,16 @@ impl Cpu {
     }
 
     fn bit(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("BIT requires an address operand");
+        let value = self.mem.read(addr);
+        let mask = self.reg_a;
+        let result = value & mask;
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::OVERFLOW, value & 0b0100_0000 != 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn bmi(&mut self, _op: &'static Op) {
