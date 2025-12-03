@@ -572,12 +572,26 @@ impl Cpu {
         self.status.set(Status::ZERO, value & SIGN_BIT != 0);
     }
 
-    fn cpx(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn cpx(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("CMP requires an address operand");
+        let value = self.mem.read(addr);
+
+        self.status.set(Status::CARRY, self.reg_x >= value);
+        self.status.set(Status::ZERO, self.reg_x == value);
+        self.status.set(Status::ZERO, value & SIGN_BIT != 0);
     }
 
-    fn cpy(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn cpy(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("CMP requires an address operand");
+        let value = self.mem.read(addr);
+
+        self.status.set(Status::CARRY, self.reg_y >= value);
+        self.status.set(Status::ZERO, self.reg_y == value);
+        self.status.set(Status::ZERO, value & SIGN_BIT != 0);
     }
 
     fn dec(&mut self, _op: &'static Op) {
