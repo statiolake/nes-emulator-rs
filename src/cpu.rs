@@ -594,8 +594,13 @@ impl Cpu {
         self.status.set(Status::ZERO, value & SIGN_BIT != 0);
     }
 
-    fn dec(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn dec(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("DEC requires an address operand");
+        let value = self.mem.read(addr);
+        let result = value.wrapping_sub(1);
+        self.mem.write(addr, result);
     }
 
     fn dex(&mut self, _op: &'static Op) {
