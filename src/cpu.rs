@@ -465,8 +465,13 @@ impl Cpu {
         }
     }
 
-    fn beq(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn beq(&mut self, op: &'static Op) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("BEQ requires an address operand");
+        if self.status.contains(Status::ZERO) {
+            self.pc = addr;
+        }
     }
 
     fn bit(&mut self, _op: &'static Op) {
