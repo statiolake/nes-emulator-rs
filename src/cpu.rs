@@ -10,6 +10,8 @@ bitflags::bitflags! {
     }
 }
 
+const SIGN_BIT: u8 = 0b1000_0000;
+
 pub struct Memory {
     pub data: [u8; 0xffff],
 }
@@ -360,10 +362,7 @@ impl Cpu {
                 let addr = self.read_pc_next();
                 u16::from(addr.wrapping_add(self.reg_y))
             }
-            AddressingMode::Absolute => {
-                let addr = self.read_pc_u16_next();
-                u16::from(self.mem.read(addr))
-            }
+            AddressingMode::Absolute => self.read_pc_u16_next(),
             AddressingMode::AbsoluteX => {
                 let addr = self.read_pc_u16_next();
                 addr.wrapping_add(u16::from(self.reg_x))
@@ -396,8 +395,20 @@ impl Cpu {
         }
     }
 
-    fn adc(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+    fn adc(&mut self, op: &'static Op) {
+        let addr = self.operand_addr_next(op.mode);
+        let reg_a = self.reg_a;
+        let value = self.mem.read(addr);
+        let (result, carry) = self.reg_a.overflowing_add(value);
+        self.reg_a = result;
+
+        self.status.set(Status::CARRY, carry);
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(
+            Status::OVERFLOW,
+            result & SIGN_BIT != 0 && reg_a.max(value) < SIGN_BIT,
+        );
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn and(&mut self, _op: &'static Op) {
@@ -630,7 +641,7 @@ impl Cpu {
         self.status.set(Status::ZERO, result == 0);
 
         // negative
-        self.status.set(Status::NEGATIVE, result & 0b1000_0000 != 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 }
 
