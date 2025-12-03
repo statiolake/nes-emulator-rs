@@ -375,6 +375,18 @@ impl Cpu {
         self.mem.read(sp_addr)
     }
 
+    fn stack_push_u16(&mut self, value: u16) {
+        let [lo, hi] = value.to_le_bytes();
+        self.stack_push(hi);
+        self.stack_push(lo);
+    }
+
+    fn stack_pop_u16(&mut self) -> u16 {
+        let lo = self.stack_pop();
+        let hi = self.stack_pop();
+        u16::from_le_bytes([lo, hi])
+    }
+
     fn operand_addr_next(&mut self, mode: AddressingMode) -> Option<u16> {
         match mode {
             AddressingMode::Immediate => Some(self.pc_next()),
@@ -696,9 +708,7 @@ impl Cpu {
             .operand_addr_next(op.mode)
             .expect("JSR requires an address operand");
 
-        let [lo, hi] = self.pc.to_le_bytes();
-        self.stack_push(hi);
-        self.stack_push(lo);
+        self.stack_push_u16(self.pc);
 
         self.pc = addr;
     }
@@ -839,7 +849,8 @@ impl Cpu {
     }
 
     fn rti(&mut self, _op: &'static Op) {
-        todo!("op {:?} not yet implemented", _op.name)
+        self.status = Status::from_bits_truncate(self.stack_pop());
+        self.pc = self.stack_pop_u16();
     }
 
     fn rts(&mut self, _op: &'static Op) {
@@ -2052,9 +2063,26 @@ mod test {
     #[test]
     fn test_0x40_rti() {
         let mut cpu = Cpu::new();
-        cpu.load(&[0x40, 0x00]);
+        // RTI pops status and PC from stack
+        // Load program with RTI instruction at 0x8000
+        cpu.load(&[0x40, 0xff]);
         cpu.reset();
+
+        // Set up stack with expected return address and status
+        // RTI will pop in reverse order: first status, then PC (lo then hi)
+        let return_addr = 0x8003u16;
+        let expected_status = Status::ZERO | Status::NEGATIVE | Status::BREAK_COMMAND;
+
+        // Push values onto stack (push_u16 pushes hi then lo, so stack will be: hi, lo)
+        cpu.mem.write_u16(0x01fe, return_addr);
+        cpu.mem.write(0x01fd, expected_status.bits());
+        cpu.sp = 0xfc;
+
         cpu.run();
+
+        // Verify RTI restored the status and PC correctly
+        assert_eq!(cpu.status, expected_status);
+        assert_eq!(cpu.pc, return_addr);
     }
 
     // ===== RTS (Return from Subroutine) Tests =====
