@@ -1,3 +1,5 @@
+use std::fmt;
+
 bitflags::bitflags! {
     #[derive(Debug, Eq, PartialEq)]
     pub struct Status: u8 {
@@ -8,6 +10,30 @@ bitflags::bitflags! {
         const BREAK_COMMAND = 0b0001_0000;
         const OVERFLOW = 0b0010_0000;
         const NEGATIVE = 0b0100_0000;
+    }
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut maybe_set = |flag: Status, ch: char| -> fmt::Result {
+            if self.contains(flag) {
+                write!(f, "{}", ch)?;
+            } else {
+                write!(f, "-")?;
+            }
+
+            Ok(())
+        };
+
+        maybe_set(Status::CARRY, 'C')?;
+        maybe_set(Status::ZERO, 'Z')?;
+        maybe_set(Status::INTERRUPT_DISABLE, 'I')?;
+        // maybe_set(Status::DECIMAL_MODE, 'D')?;
+        maybe_set(Status::BREAK_COMMAND, 'B')?;
+        maybe_set(Status::OVERFLOW, 'V')?;
+        maybe_set(Status::NEGATIVE, 'N')?;
+
+        Ok(())
     }
 }
 
@@ -323,21 +349,78 @@ impl Cpu {
     }
 
     pub fn load(&mut self, program: &[u8]) {
-        let start_address = 0x8000; // Starting address for now
+        let start_address = 0x0600; // Starting address for now
         self.mem.load(start_address, program);
         self.mem.write_u16(0xfffc, start_address);
     }
 
     pub fn run(&mut self) {
         while !self.status.contains(Status::BREAK_COMMAND) {
-            eprintln!("PC: {:x}", self.pc);
-            let op_code = self.read_pc_next();
-            let Some(op) = self.op_table[op_code as usize] else {
-                panic!("Invalid opcode {op_code:x} at PC {:#06x}", self.pc - 1);
-            };
-
-            (op.handler)(self, op);
+            self.step();
         }
+    }
+
+    pub fn step(&mut self) {
+        // self.debug_dump_state();
+        let op_code = self.read_pc_next();
+        let Some(op) = self.op_table[op_code as usize] else {
+            panic!("Invalid opcode {op_code:x} at PC {:#06x}", self.pc - 1);
+        };
+
+        (op.handler)(self, op);
+    }
+
+    fn debug_dump_state(&mut self) {
+        let op_code = self.mem.read(self.pc);
+        let maybe_op = self.op_table[op_code as usize];
+        let (op_name, first, second) = match maybe_op {
+            Some(op) => {
+                use AddressingMode::*;
+                let name = op.name;
+                let (first, second) = match op.mode {
+                    Immediate | ZeroPage | ZeroPageX | ZeroPageY | Relative => {
+                        let byte = self.mem.read(self.pc + 1);
+                        (Some(byte), None)
+                    }
+                    Absolute | AbsoluteX | AbsoluteY | Indirect => {
+                        let first = self.mem.read(self.pc + 1);
+                        let second = self.mem.read(self.pc + 2);
+                        (Some(first), Some(second))
+                    }
+                    IndexedIndirect | IndirectIndexed => {
+                        let byte = self.mem.read(self.pc + 1);
+                        (Some(byte), None)
+                    }
+                    Accumulator | Implied => (None, None),
+                };
+
+                (name, first, second)
+            }
+            None => ("???", None, None),
+        };
+
+        let first = match first {
+            Some(byte) => format!("{:02X}", byte),
+            None => "  ".to_string(),
+        };
+
+        let second = match second {
+            Some(byte) => format!("{:02X}", byte),
+            None => "  ".to_string(),
+        };
+
+        eprintln!(
+            "{pc:04X}  {op_name:3} {first:2} {second:2}  A:{a:02X}  X:{x:02X}  Y:{y:02X}  SP:{sp:02X}  ST:{status}",
+            pc = self.pc,
+            op_name = op_name,
+            first = first,
+            second = second,
+            a = self.reg_a,
+            x = self.reg_x,
+            y = self.reg_y,
+            sp = self.sp,
+            status = self.status,
+        );
     }
 
     fn pc_next(&mut self) -> u16 {
@@ -389,47 +472,50 @@ impl Cpu {
     }
 
     fn operand_addr_next(&mut self, mode: AddressingMode) -> Option<u16> {
+        use AddressingMode::*;
+
         match mode {
-            AddressingMode::Immediate => Some(self.pc_next()),
-            AddressingMode::ZeroPage => Some(u16::from(self.read_pc_next())),
-            AddressingMode::ZeroPageX => {
+            Immediate => Some(self.pc_next()),
+            ZeroPage => Some(u16::from(self.read_pc_next())),
+            ZeroPageX => {
                 let addr = self.read_pc_next();
                 Some(u16::from(addr.wrapping_add(self.reg_x)))
             }
-            AddressingMode::ZeroPageY => {
+            ZeroPageY => {
                 let addr = self.read_pc_next();
                 Some(u16::from(addr.wrapping_add(self.reg_y)))
             }
-            AddressingMode::Absolute => Some(self.read_pc_u16_next()),
-            AddressingMode::AbsoluteX => {
+            Absolute => Some(self.read_pc_u16_next()),
+            AbsoluteX => {
                 let addr = self.read_pc_u16_next();
                 Some(addr.wrapping_add(u16::from(self.reg_x)))
             }
-            AddressingMode::AbsoluteY => {
+            AbsoluteY => {
                 let addr = self.read_pc_u16_next();
                 Some(addr.wrapping_add(u16::from(self.reg_y)))
             }
-            AddressingMode::Relative => {
-                let offset = self.read_pc_next();
-                Some(self.pc.wrapping_add(u16::from(offset)))
+            Relative => {
+                // this relative offset is signed
+                let offset = self.read_pc_next() as i8;
+                Some(self.pc.wrapping_add_signed(i16::from(offset)))
             }
-            AddressingMode::Indirect => {
+            Indirect => {
                 let addr = self.read_pc_u16_next();
                 Some(self.mem.read_u16(addr))
             }
-            AddressingMode::IndexedIndirect => {
+            IndexedIndirect => {
                 let base = self.read_pc_next();
                 let offsetted = base.wrapping_add(self.reg_x);
                 Some(self.mem.read_u16(u16::from(offsetted)))
             }
-            AddressingMode::IndirectIndexed => {
+            IndirectIndexed => {
                 let base = self.read_pc_next();
                 let addr = self.mem.read_u16(u16::from(base));
 
                 Some(addr.wrapping_add(u16::from(self.reg_y)))
             }
-            AddressingMode::Accumulator => None,
-            AddressingMode::Implied => {
+            Accumulator => None,
+            Implied => {
                 panic!("Implied addressing mode does not have an operand address")
             }
         }
