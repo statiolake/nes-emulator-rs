@@ -3,24 +3,24 @@ use std::sync::{Arc, Mutex};
 use crate::hardware::{
     bus::{Bus, MirroredRange},
     cpu::Cpu,
-    memory::Memory,
+    ram::Ram,
 };
 
 pub mod bus;
 pub mod cpu;
-pub mod memory;
+pub mod ram;
 
 pub struct Hardware {
     pub cpu: Cpu,
 
-    pub mem: Arc<Mutex<Memory>>,
+    pub ram: Arc<Mutex<Ram>>,
 }
 
 impl Hardware {
     pub fn assemble() -> Self {
         let mut bus = Bus::new();
 
-        let mem = Arc::new(Mutex::new(Memory::new()));
+        let mem = Arc::new(Mutex::new(Ram::new()));
         bus.connect(
             MirroredRange::new(0x0000..0x2000, 0b0000_0111_1111_1111),
             Arc::clone(&mem),
@@ -28,6 +28,6 @@ impl Hardware {
 
         let cpu = Cpu::new(bus);
 
-        Hardware { cpu, mem }
+        Hardware { cpu, ram: mem }
     }
 }

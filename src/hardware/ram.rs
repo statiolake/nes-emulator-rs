@@ -1,12 +1,12 @@
 use crate::hardware::bus::Peripheral;
 
-pub struct Memory {
+pub struct Ram {
     data: [u8; 2048],
 }
 
-impl Memory {
+impl Ram {
     pub fn new() -> Self {
-        Memory { data: [0; 2048] }
+        Ram { data: [0; 2048] }
     }
 
     pub fn load(&mut self, start_address: u16, program: &[u8]) {
@@ -35,7 +35,7 @@ impl Memory {
     }
 }
 
-impl Peripheral for Memory {
+impl Peripheral for Ram {
     fn read(&mut self, address: u16) -> u8 {
         self.read(address)
     }
@@ -45,7 +45,7 @@ impl Peripheral for Memory {
     }
 }
 
-impl Default for Memory {
+impl Default for Ram {
     fn default() -> Self {
         Self::new()
     }

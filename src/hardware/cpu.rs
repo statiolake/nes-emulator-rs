@@ -1007,20 +1007,20 @@ impl Cpu {
 
 #[cfg(test)]
 mod test {
-    use crate::hardware::memory::Memory;
+    use crate::hardware::ram::Ram;
 
     use super::*;
 
     fn create_bus(program: &[u8]) -> Bus {
         // Memory that holds the testing program
-        let mut mem_prg = Memory::new();
+        let mut mem_prg = Ram::new();
         mem_prg.load(0x0000, program);
 
         // Memory that is sometimes used to test jump instructions
         // (Some tests use 0x8000 as the target address for jumps)
-        let mem_zp = Memory::new();
+        let mem_zp = Ram::new();
 
-        let mut start_address = Memory::new();
+        let mut start_address = Ram::new();
         start_address.write_u16(0x0000, 0x8000);
 
         let mut bus = Bus::new();
