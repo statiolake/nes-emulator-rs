@@ -13,7 +13,7 @@ pub mod ram;
 pub mod rom;
 
 pub struct Hardware {
-    pub cpu: Cpu,
+    pub cpu: Arc<Mutex<Cpu>>,
 
     pub ram: Arc<Mutex<Ram>>,
     pub rom: Arc<Mutex<Rom>>,
@@ -32,8 +32,12 @@ impl Hardware {
         let rom = Arc::new(Mutex::new(rom));
         bus.connect(0x8000..=0xffff, Arc::clone(&rom));
 
-        let cpu = Cpu::new(bus);
+        let cpu = Arc::new(Mutex::new(Cpu::new(bus)));
 
         Hardware { cpu, ram, rom }
+    }
+
+    pub fn power_on(&self) {
+        self.cpu.lock().unwrap().reset();
     }
 }
