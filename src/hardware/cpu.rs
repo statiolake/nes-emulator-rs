@@ -1,5 +1,7 @@
 use std::fmt;
 
+use itertools::Itertools as _;
+
 use crate::hardware::bus::Bus;
 
 bitflags::bitflags! {
@@ -8,10 +10,11 @@ bitflags::bitflags! {
         const CARRY = 0b0000_0001;
         const ZERO = 0b0000_0010;
         const INTERRUPT_DISABLE = 0b0000_0100;
-        // const DECIMAL_MODE = 0b0000_1000; // not supported on NES
+        const DECIMAL = 0b0000_1000; // not supported on NES
         const BREAK_COMMAND = 0b0001_0000;
-        const OVERFLOW = 0b0010_0000;
-        const NEGATIVE = 0b0100_0000;
+        const RESERVED = 0b0010_0000;
+        const OVERFLOW = 0b0100_0000;
+        const NEGATIVE = 0b1000_0000;
     }
 }
 
@@ -461,7 +464,7 @@ impl Cpu {
         self.reg_a = 0;
         self.reg_x = 0;
         self.reg_y = 0;
-        self.status = Status::empty();
+        self.status = Status::RESERVED;
         self.pc = self.bus.read_u16(0xfffc);
         self.sp = 0xff;
     }
@@ -1118,57 +1121,39 @@ impl Cpu {
 }
 
 fn dump_state(cpu: &mut Cpu) -> String {
-    todo!()
-    // let op_code = cpu.bus.read(cpu.pc);
-    // let maybe_op = cpu.op_table[op_code as usize];
-    // let (op_name, first, second) = match maybe_op {
-    //     Some(op) => {
-    //         use AddressingMode::*;
-    //         let name = op.name;
-    //         let (first, second) = match op.mode {
-    //             Immediate | ZeroPage | ZeroPageX | ZeroPageY | Relative => {
-    //                 let byte = cpu.bus.read(cpu.pc + 1);
-    //                 (Some(byte), None)
-    //             }
-    //             Absolute | AbsoluteX | AbsoluteY | Indirect => {
-    //                 let first = cpu.bus.read(cpu.pc + 1);
-    //                 let second = cpu.bus.read(cpu.pc + 2);
-    //                 (Some(first), Some(second))
-    //             }
-    //             IndexedIndirect | IndirectIndexed => {
-    //                 let byte = cpu.bus.read(cpu.pc + 1);
-    //                 (Some(byte), None)
-    //             }
-    //             Accumulator | Implied => (None, None),
-    //         };
-    //
-    //         (name, first, second)
-    //     }
-    //     None => ("???", None, None),
-    // };
-    //
-    // let first = match first {
-    //     Some(byte) => format!("{:02X}", byte),
-    //     None => "  ".to_string(),
-    // };
-    //
-    // let second = match second {
-    //     Some(byte) => format!("{:02X}", byte),
-    //     None => "  ".to_string(),
-    // };
-    //
-    // return format!(
-    //     "{pc:04X}  {op_name:3} {first:2} {second:2}  A:{a:02X}  X:{x:02X}  Y:{y:02X}  SP:{sp:02X}  ST:{status}",
-    //     pc = cpu.pc,
-    //     op_name = op_name,
-    //     first = first,
-    //     second = second,
-    //     a = cpu.reg_a,
-    //     x = cpu.reg_x,
-    //     y = cpu.reg_y,
-    //     sp = cpu.sp,
-    //     status = cpu.status,
-    // );
+    let op_code = cpu.bus.read(cpu.pc);
+    let maybe_op = cpu.op_table[op_code as usize];
+    let instr_len = if let Some(op) = maybe_op { op.len() } else { 1 };
+    let instr = (0..instr_len)
+        .map(|i| cpu.bus.read(cpu.pc + i as u16))
+        .collect::<Vec<u8>>();
+    let disassembled = disassemble(cpu, &instr);
+
+    let pc = cpu.pc;
+    let instr = (0..3)
+        .map(|i| {
+            if i < instr_len {
+                format!("{:02X}", cpu.bus.read(pc + i as u16))
+            } else {
+                "  ".to_string()
+            }
+        })
+        .join(" ");
+    let ext_mark = " "; // TODO: add * for extension mnemonics
+    let disassembled = format!(
+        "{} {}",
+        disassembled.repr,
+        disassembled.addr_value_hint.unwrap_or_default()
+    );
+    let reg_a = cpu.reg_a;
+    let reg_x = cpu.reg_x;
+    let reg_y = cpu.reg_y;
+    let p = cpu.status.bits();
+    let sp = cpu.sp;
+
+    return format!(
+        "{pc:04X}  {instr} {ext_mark}{disassembled:31} A:{reg_a:02X} X:{reg_x:02X} Y:{reg_y:02X} P:{p:02X} SP:{sp:02X}",
+    );
 }
 
 #[cfg(test)]
