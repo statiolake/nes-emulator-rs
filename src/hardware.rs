@@ -4,30 +4,36 @@ use crate::hardware::{
     bus::{Bus, MirroredRange},
     cpu::Cpu,
     ram::Ram,
+    rom::Rom,
 };
 
 pub mod bus;
 pub mod cpu;
 pub mod ram;
+pub mod rom;
 
 pub struct Hardware {
     pub cpu: Cpu,
 
     pub ram: Arc<Mutex<Ram>>,
+    pub rom: Arc<Mutex<Rom>>,
 }
 
 impl Hardware {
-    pub fn assemble() -> Self {
+    pub fn assemble(rom: Rom) -> Self {
         let mut bus = Bus::new();
 
-        let mem = Arc::new(Mutex::new(Ram::new()));
+        let ram = Arc::new(Mutex::new(Ram::new()));
         bus.connect(
-            MirroredRange::new(0x0000..0x2000, 0b0000_0111_1111_1111),
-            Arc::clone(&mem),
+            MirroredRange::new(0x0000..=0x1fff, 0b0000_0111_1111_1111),
+            Arc::clone(&ram),
         );
+
+        let rom = Arc::new(Mutex::new(rom));
+        bus.connect(0x8000..=0xffff, Arc::clone(&rom));
 
         let cpu = Cpu::new(bus);
 
-        Hardware { cpu, ram: mem }
+        Hardware { cpu, ram, rom }
     }
 }

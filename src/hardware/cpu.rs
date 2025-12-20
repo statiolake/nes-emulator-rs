@@ -325,7 +325,7 @@ impl Cpu {
         (op.handler)(self, op);
     }
 
-    fn debug_dump_state(&mut self) {
+    pub fn debug_dump_state(&mut self) {
         let op_code = self.bus.read(self.pc);
         let maybe_op = self.op_table[op_code as usize];
         let (op_name, first, second) = match maybe_op {
@@ -1024,9 +1024,9 @@ mod test {
         start_address.write_u16(0x0000, 0x8000);
 
         let mut bus = Bus::new();
-        bus.connect(0x0000..0x0800, mem_zp);
-        bus.connect(0x8000..0x8800, mem_prg);
-        bus.connect(0xfffc..0xffff, start_address);
+        bus.connect(0x0000..=0x07ff, mem_zp);
+        bus.connect(0x8000..=0x87ff, mem_prg);
+        bus.connect(0xfffc..=0xffff, start_address);
 
         bus
     }

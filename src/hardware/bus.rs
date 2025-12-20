@@ -1,9 +1,9 @@
 use std::{
-    ops::Range,
+    ops::RangeInclusive,
     sync::{Arc, Mutex},
 };
 
-use bevy::log::warn;
+use log::warn;
 
 pub trait Peripheral {
     fn read(&mut self, address: u16) -> u8;
@@ -23,27 +23,27 @@ impl<P: Peripheral> Peripheral for Arc<Mutex<P>> {
 }
 
 pub trait Connection {
-    fn bus_addr_range(&self) -> Range<u16>;
+    fn bus_addr_range(&self) -> RangeInclusive<u16>;
     fn to_device_addr(&self, address: u16) -> u16;
 }
 
-impl Connection for Range<u16> {
-    fn bus_addr_range(&self) -> Range<u16> {
-        self.start..self.end
+impl Connection for RangeInclusive<u16> {
+    fn bus_addr_range(&self) -> RangeInclusive<u16> {
+        *self.start()..=*self.end()
     }
 
     fn to_device_addr(&self, address: u16) -> u16 {
-        address - self.start
+        address - self.start()
     }
 }
 
 pub struct MirroredRange {
-    pub base_range: Range<u16>,
+    pub base_range: RangeInclusive<u16>,
     pub mirror_mask: u16,
 }
 
 impl MirroredRange {
-    pub fn new(base_range: Range<u16>, mirror_mask: u16) -> Self {
+    pub fn new(base_range: RangeInclusive<u16>, mirror_mask: u16) -> Self {
         MirroredRange {
             base_range,
             mirror_mask,
@@ -52,8 +52,8 @@ impl MirroredRange {
 }
 
 impl Connection for MirroredRange {
-    fn bus_addr_range(&self) -> Range<u16> {
-        self.base_range.start..self.base_range.end
+    fn bus_addr_range(&self) -> RangeInclusive<u16> {
+        *self.base_range.start()..=*self.base_range.end()
     }
 
     fn to_device_addr(&self, bus_addr: u16) -> u16 {
@@ -119,5 +119,11 @@ impl Bus {
         let bytes = value.to_le_bytes();
         self.write(bus_addr, bytes[0]);
         self.write(bus_addr + 1, bytes[1]);
+    }
+}
+
+impl Default for Bus {
+    fn default() -> Self {
+        Self::new()
     }
 }
