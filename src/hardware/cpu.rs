@@ -380,7 +380,11 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
             Relative => {
                 let first = first?;
                 let offset = first as i8;
-                let addr = cpu.pc.wrapping_add_signed(i16::from(offset));
+                // need to advance PC by 2 (the length of this instruction)
+                let addr = cpu
+                    .pc
+                    .wrapping_add(2)
+                    .wrapping_add_signed(i16::from(offset));
                 Disassembled {
                     repr: format!("{op_name} ${addr:04X}"),
                     addr_value_hint: None,
@@ -3135,20 +3139,18 @@ mod test {
     fn disassemble_relative() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
         cpu.pc = 0x8000;
-        cpu.bus.write(0x8004, 0x55);
 
-        // Example: BCS $8004
-        let result = disassemble(&mut cpu, &[0xb0, 0x04]);
-        assert_eq!(result.repr, "BCS $8004");
+        // Example: BCS $8005
+        let result = disassemble(&mut cpu, &[0xb0, 0x03]);
+        assert_eq!(result.repr, "BCS $8005");
         assert_eq!(result.addr_value_hint, None);
 
         // Negative offset test
         cpu.pc = 0x8010;
         cpu.bus.write(0x800C, 0xaa);
         let result = disassemble(&mut cpu, &[0xf0, 0xfc]);
-        assert_eq!(result.repr, "BEQ $800C");
+        assert_eq!(result.repr, "BEQ $800E");
         assert_eq!(result.addr_value_hint, None);
     }
 
