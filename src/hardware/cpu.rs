@@ -292,20 +292,20 @@ pub struct Disassembled {
     pub addr_value_hint: Option<String>,
 }
 
-pub fn disassemble(cpu: &mut Cpu, ins: &[u8]) -> Disassembled {
-    return inner(cpu, ins).unwrap_or_else(|| Disassembled {
+pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
+    return inner(cpu, instr).unwrap_or_else(|| Disassembled {
         repr: "???".to_string(),
         addr_value_hint: None,
     });
 
-    fn inner(cpu: &mut Cpu, ins: &[u8]) -> Option<Disassembled> {
+    fn inner(cpu: &mut Cpu, instr: &[u8]) -> Option<Disassembled> {
         use AddressingMode::*;
 
-        let op = cpu.op_table[ins[0] as usize]?;
+        let op = cpu.op_table[instr[0] as usize]?;
         let op_name = op.name;
 
-        let first = ins.get(1).copied();
-        let second = ins.get(2).copied();
+        let first = instr.get(1).copied();
+        let second = instr.get(2).copied();
 
         Some(match op.mode {
             Immediate => {
@@ -346,9 +346,13 @@ pub fn disassemble(cpu: &mut Cpu, ins: &[u8]) -> Disassembled {
                 let second = second?;
                 let addr = u16::from_le_bytes([first, second]);
                 let value = cpu.bus.read(addr);
+                let addr_value_hint = match op_name {
+                    "JMP" | "JSR" => None,
+                    _ => Some(format!("= {value:02X}")),
+                };
                 Disassembled {
                     repr: format!("{op_name} ${addr:04X}"),
-                    addr_value_hint: Some(format!("= {value:02X}")),
+                    addr_value_hint,
                 }
             }
             AbsoluteX => {
@@ -377,10 +381,9 @@ pub fn disassemble(cpu: &mut Cpu, ins: &[u8]) -> Disassembled {
                 let first = first?;
                 let offset = first as i8;
                 let addr = cpu.pc.wrapping_add_signed(i16::from(offset));
-                let value = cpu.bus.read(addr);
                 Disassembled {
                     repr: format!("{op_name} ${addr:04X}"),
-                    addr_value_hint: Some(format!("= {value:02X}")),
+                    addr_value_hint: None,
                 }
             }
             Indirect => {
@@ -490,7 +493,39 @@ impl Cpu {
     }
 
     pub fn dump_state(&mut self) -> String {
-        dump_state(self)
+        let op_code = self.bus.read(self.pc);
+        let maybe_op = self.op_table[op_code as usize];
+        let instr_len = if let Some(op) = maybe_op { op.len() } else { 1 };
+        let instr = (0..instr_len)
+            .map(|i| self.bus.read(self.pc + i as u16))
+            .collect::<Vec<u8>>();
+        let disassembled = disassemble(self, &instr);
+
+        let pc = self.pc;
+        let instr = (0..3)
+            .map(|i| {
+                if i < instr_len {
+                    format!("{:02X}", self.bus.read(pc + i as u16))
+                } else {
+                    "  ".to_string()
+                }
+            })
+            .join(" ");
+        let ext_mark = " "; // TODO: add * for extension mnemonics
+        let disassembled = format!(
+            "{} {}",
+            disassembled.repr,
+            disassembled.addr_value_hint.unwrap_or_default()
+        );
+        let reg_a = self.reg_a;
+        let reg_x = self.reg_x;
+        let reg_y = self.reg_y;
+        let p = self.status.bits();
+        let sp = self.sp;
+
+        format!(
+            "{pc:04X}  {instr} {ext_mark}{disassembled:31} A:{reg_a:02X} X:{reg_x:02X} Y:{reg_y:02X} P:{p:02X} SP:{sp:02X}",
+        )
     }
 
     fn pc_next(&mut self) -> u16 {
@@ -739,7 +774,8 @@ impl Cpu {
         self.status.remove(Status::CARRY);
     }
 
-    fn cld(&mut self, op: &'static Opcode) {
+    fn cld(&mut self, _op: &'static Opcode) {
+        // Decimal mode is not supported but we can set the flag
         self.status.remove(Status::DECIMAL_MODE);
     }
 
@@ -1036,11 +1072,9 @@ impl Cpu {
         self.status.insert(Status::CARRY);
     }
 
-    fn sed(&mut self, op: &'static Opcode) {
-        panic!(
-            "op {:?} is not supported; decimal mode is not supported",
-            op.name
-        )
+    fn sed(&mut self, _op: &'static Opcode) {
+        // Decimal mode is not supported but we can set the flag
+        self.status.insert(Status::DECIMAL_MODE);
     }
 
     fn sei(&mut self, _op: &'static Opcode) {
@@ -1115,42 +1149,6 @@ impl Cpu {
     fn ivd(&mut self, _op: &'static Opcode) {
         panic!("Invalid opcode encountered");
     }
-}
-
-fn dump_state(cpu: &mut Cpu) -> String {
-    let op_code = cpu.bus.read(cpu.pc);
-    let maybe_op = cpu.op_table[op_code as usize];
-    let instr_len = if let Some(op) = maybe_op { op.len() } else { 1 };
-    let instr = (0..instr_len)
-        .map(|i| cpu.bus.read(cpu.pc + i as u16))
-        .collect::<Vec<u8>>();
-    let disassembled = disassemble(cpu, &instr);
-
-    let pc = cpu.pc;
-    let instr = (0..3)
-        .map(|i| {
-            if i < instr_len {
-                format!("{:02X}", cpu.bus.read(pc + i as u16))
-            } else {
-                "  ".to_string()
-            }
-        })
-        .join(" ");
-    let ext_mark = " "; // TODO: add * for extension mnemonics
-    let disassembled = format!(
-        "{} {}",
-        disassembled.repr,
-        disassembled.addr_value_hint.unwrap_or_default()
-    );
-    let reg_a = cpu.reg_a;
-    let reg_x = cpu.reg_x;
-    let reg_y = cpu.reg_y;
-    let p = cpu.status.bits();
-    let sp = cpu.sp;
-
-    return format!(
-        "{pc:04X}  {instr} {ext_mark}{disassembled:31} A:{reg_a:02X} X:{reg_x:02X} Y:{reg_y:02X} P:{p:02X} SP:{sp:02X}",
-    );
 }
 
 #[cfg(test)]
@@ -2573,7 +2571,6 @@ mod test {
     // ===== SED (Set Decimal) Tests =====
 
     #[test]
-    #[should_panic] // decimal mode is not supported on NES
     fn test_0xf8_sed() {
         let bus = create_bus(&[0xf8, 0x00]);
         let mut cpu = Cpu::new(bus);
@@ -2604,7 +2601,6 @@ mod test {
     // ===== CLD (Clear Decimal) Tests =====
 
     #[test]
-    #[should_panic] // decimal mode is not supported on NES
     fn test_0xd8_cld() {
         let bus = create_bus(&[0xd8, 0x00]);
         let mut cpu = Cpu::new(bus);
@@ -3100,7 +3096,7 @@ mod test {
         // Example: JMP $8020 = 42 (4-digit hex address)
         let result = disassemble(&mut cpu, &[0x4c, 0x20, 0x80]); // JMP $8020
         assert_eq!(result.repr, "JMP $8020");
-        assert_eq!(result.addr_value_hint, Some("= 42".to_string()));
+        assert_eq!(result.addr_value_hint, None);
 
         let result = disassemble(&mut cpu, &[0xad, 0x20, 0x80]); // LDA $8020
         assert_eq!(result.repr, "LDA $8020");
@@ -3143,17 +3139,17 @@ mod test {
         cpu.pc = 0x8000;
         cpu.bus.write(0x8004, 0x55);
 
-        // Example: BCS $8005 = 55 (target address is calculated from PC and offset)
+        // Example: BCS $8004
         let result = disassemble(&mut cpu, &[0xb0, 0x04]);
         assert_eq!(result.repr, "BCS $8004");
-        assert_eq!(result.addr_value_hint, Some("= 55".to_string()));
+        assert_eq!(result.addr_value_hint, None);
 
         // Negative offset test
         cpu.pc = 0x8010;
         cpu.bus.write(0x800C, 0xaa);
         let result = disassemble(&mut cpu, &[0xf0, 0xfc]);
         assert_eq!(result.repr, "BEQ $800C");
-        assert_eq!(result.addr_value_hint, Some("= AA".to_string()));
+        assert_eq!(result.addr_value_hint, None);
     }
 
     #[test]

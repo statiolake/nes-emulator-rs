@@ -6,10 +6,10 @@ use crate::hardware::bus::Peripheral;
 pub struct Rom {
     prg_rom_size: PrgRomSize,
     prg_rom_data: Vec<u8>,
-    chr_rom_size: ChrRomSize,
-    chr_rom_data: Vec<u8>,
+    _chr_rom_size: ChrRomSize,
+    _chr_rom_data: Vec<u8>,
     mapper: Mapper,
-    screen_mirroring: ScreenMirroring,
+    _screen_mirroring: ScreenMirroring,
 }
 
 impl Rom {
@@ -23,14 +23,15 @@ impl Rom {
         Ok(Rom {
             prg_rom_size,
             prg_rom_data,
-            chr_rom_size,
-            chr_rom_data,
+            _chr_rom_size: chr_rom_size,
+            _chr_rom_data: chr_rom_data,
             mapper,
-            screen_mirroring: mirroring,
+            _screen_mirroring: mirroring,
         })
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrgRomSize {
     Size16KB,
     Size32KB,
@@ -60,6 +61,7 @@ impl PrgRomSize {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ChrRomSize {
     size_kb: usize,
 }
@@ -75,6 +77,7 @@ impl ChrRomSize {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Mapper {
     None,
 }
@@ -158,11 +161,27 @@ impl Peripheral for Rom {
 
 #[cfg(test)]
 mod tests {
-    use crate::hardware::rom::Rom;
+    use crate::hardware::rom::{ChrRomSize, Mapper, PrgRomSize, Rom};
 
     #[test]
     fn parse_ok() {
         let binary = include_bytes!("../../rom/nestest.nes");
-        Rom::parse(binary).expect("should parse tester rom correctly");
+        assert_eq!(binary.len(), 16 + 16384 + 8192);
+
+        let rom = Rom::parse(binary).expect("should parse tester rom correctly");
+        assert_eq!(rom.mapper, Mapper::None);
+
+        assert_eq!(rom.prg_rom_size, PrgRomSize::Size16KB);
+        assert_eq!(&binary[16..(16 + 16384)], rom.prg_rom_data.as_slice());
+
+        assert_eq!(rom._chr_rom_size, ChrRomSize { size_kb: 8 });
+        assert_eq!(
+            &binary[(16 + 16384)..(16 + 16384 + 8192)],
+            rom._chr_rom_data.as_slice()
+        );
+
+        // Check entry point
+        assert_eq!(rom.prg_rom_data[0x3ffc], 0x04);
+        assert_eq!(rom.prg_rom_data[0x3ffd], 0xc0);
     }
 }

@@ -2,6 +2,9 @@ use crate::hardware::{Hardware, rom::Rom};
 
 pub mod hardware;
 
+#[cfg(test)]
+mod test;
+
 // const WIDTH: u32 = 32;
 // const HEIGHT: u32 = 32;
 // const SCALE: f32 = 30.0;
