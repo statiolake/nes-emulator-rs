@@ -408,7 +408,10 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
             IndexedIndirect => {
                 let first = first?;
                 let offsetted = first.wrapping_add(cpu.reg_x);
-                let addr = cpu.bus.read_u16(u16::from(offsetted));
+                // IndexedIndirect always reads from zero page
+                let lo = cpu.bus.read(u16::from(offsetted));
+                let hi = cpu.bus.read(u16::from(offsetted.wrapping_add(1)));
+                let addr = u16::from_le_bytes([lo, hi]);
                 let value = cpu.bus.read(addr);
                 Disassembled {
                     repr: format!("{op_name} (${:02X},X)", first),
@@ -625,7 +628,11 @@ impl Cpu {
             IndexedIndirect => {
                 let base = self.read_pc_next();
                 let offsetted = base.wrapping_add(self.reg_x);
-                Some(self.bus.read_u16(u16::from(offsetted)))
+                // IndexedIndirect always read address from zero page
+                let lo = self.bus.read(u16::from(offsetted));
+                let hi = self.bus.read(u16::from(offsetted.wrapping_add(1)));
+                let addr = u16::from_le_bytes([lo, hi]);
+                Some(addr)
             }
             IndirectIndexed => {
                 let base = self.read_pc_next();

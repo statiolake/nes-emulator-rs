@@ -98,7 +98,7 @@ impl Bus {
 
     pub fn read_u16(&mut self, bus_addr: u16) -> u16 {
         let lo = self.read(bus_addr);
-        let hi = self.read(bus_addr + 1);
+        let hi = self.read(bus_addr.wrapping_add(1));
         u16::from_le_bytes([lo, hi])
     }
 
@@ -118,7 +118,7 @@ impl Bus {
     pub fn write_u16(&mut self, bus_addr: u16, value: u16) {
         let bytes = value.to_le_bytes();
         self.write(bus_addr, bytes[0]);
-        self.write(bus_addr + 1, bytes[1]);
+        self.write(bus_addr.wrapping_add(1), bytes[1]);
     }
 }
 
