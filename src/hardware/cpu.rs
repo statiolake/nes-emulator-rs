@@ -2350,7 +2350,8 @@ mod test {
         cpu.run();
 
         // B Flag should be ignored when pulling status
-        assert_eq!(cpu.status, Status::INTERRUPT_DISABLE);
+        // RESERVED flag
+        assert_eq!(cpu.status, Status::INTERRUPT_DISABLE | Status::RESERVED);
     }
 
     // ===== ROL (Rotate Left) Tests =====
