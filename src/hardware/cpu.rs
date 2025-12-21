@@ -1,6 +1,7 @@
 use std::fmt;
 
 use itertools::Itertools as _;
+use log::warn;
 
 use crate::hardware::bus::Bus;
 
@@ -399,10 +400,20 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let first = first?;
                 let second = second?;
                 let ptr_addr = u16::from_le_bytes([first, second]);
-                let addr = cpu.bus.read_u16(ptr_addr);
+
+                // Emulate 6502 page boundary hardware bug
+                // On page boundary, the high byte does not wrap to the next page
+                // So, if the addr is $01FF, the hi byte is read from $0100 instead of $0200
+                let [lo_addr, hi_addr] = ptr_addr.to_le_bytes();
+                let lo = cpu.bus.read(u16::from_le_bytes([lo_addr, hi_addr]));
+                let hi = cpu
+                    .bus
+                    .read(u16::from_le_bytes([lo_addr.wrapping_add(1), hi_addr]));
+
+                let addr = u16::from_le_bytes([lo, hi]);
                 Disassembled {
                     repr: format!("{op_name} (${ptr_addr:04X})"),
-                    addr_value_hint: Some(format!("= {addr:02X}")),
+                    addr_value_hint: Some(format!("= {addr:04X}")),
                 }
             }
             IndexedIndirect => {
@@ -502,7 +513,9 @@ impl Cpu {
         // self.debug_dump_state();
         let op_code = self.read_pc_next();
         let Some(op) = self.op_table[op_code as usize] else {
-            panic!("Invalid opcode {op_code:x} at PC {:#06x}", self.pc - 1);
+            warn!("Invalid opcode {op_code:x} at PC {:#06x}", self.pc - 1);
+            self.halted = true;
+            return;
         };
 
         (op.handler)(self, op);
@@ -626,7 +639,17 @@ impl Cpu {
             }
             Indirect => {
                 let addr = self.read_pc_u16_next();
-                Some(self.bus.read_u16(addr))
+
+                // Emulate 6502 page boundary hardware bug
+                // On page boundary, the high byte does not wrap to the next page
+                // So, if the addr is $01FF, the hi byte is read from $0100 instead of $0200
+                let [lo_addr, hi_addr] = addr.to_le_bytes();
+                let lo = self.bus.read(u16::from_le_bytes([lo_addr, hi_addr]));
+                let hi = self
+                    .bus
+                    .read(u16::from_le_bytes([lo_addr.wrapping_add(1), hi_addr]));
+
+                Some(u16::from_le_bytes([lo, hi]))
             }
             IndexedIndirect => {
                 let base = self.read_pc_next();
