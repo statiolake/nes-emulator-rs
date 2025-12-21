@@ -435,6 +435,8 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
 pub struct Cpu {
     pub op_table: Vec<Option<&'static Opcode>>,
 
+    pub halted: bool,
+
     pub reg_a: u8,
     pub reg_x: u8,
     pub reg_y: u8,
@@ -456,6 +458,8 @@ impl Cpu {
         Cpu {
             op_table,
 
+            halted: false,
+
             reg_a: 0,
             reg_x: 0,
             reg_y: 0,
@@ -468,6 +472,7 @@ impl Cpu {
     }
 
     pub fn reset(&mut self) {
+        self.halted = false;
         self.reg_a = 0;
         self.reg_x = 0;
         self.reg_y = 0;
@@ -493,7 +498,7 @@ impl Cpu {
     }
 
     pub fn is_halted(&self) -> bool {
-        self.status.contains(Status::BREAK_COMMAND)
+        self.halted
     }
 
     pub fn dump_state(&mut self) -> String {
@@ -753,7 +758,7 @@ impl Cpu {
     }
 
     fn brk(&mut self, _op: &'static Opcode) {
-        self.status.insert(Status::BREAK_COMMAND);
+        self.halted = true;
     }
 
     fn bvc(&mut self, op: &'static Opcode) {
@@ -2325,8 +2330,7 @@ mod test {
 
     #[test]
     fn test_0x28_plp() {
-        // Status::BREAK_COMMAND is set in the stack so the last op 0xff should not be executbused
-        let bus = create_bus(&[0x28, 0xff]);
+        let bus = create_bus(&[0x28, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(
             0x01ff,
@@ -2405,15 +2409,15 @@ mod test {
     #[test]
     fn test_0x40_rti() {
         // RTI pops status and PC from stack
-        // Load program with RTI instruction at 0x80bus00
-        let bus = create_bus(&[0x40, 0xff]);
+        // Load program with RTI instruction at 0x8000
+        let bus = create_bus(&[0x40, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.reset();
 
         // Set up stack with expected return address and status
         // RTI will pop in reverse order: first status, then PC (lo then hi)
-        let return_addr = 0x8003u16;
-        let expected_status = Status::ZERO | Status::NEGATIVE | Status::BREAK_COMMAND;
+        let return_addr = 0x8003;
+        let expected_status = Status::ZERO | Status::NEGATIVE;
 
         // Push values onto stack (push_u16 pushes hi then lo, so stack will be: hi, lo)
         cpu.bus.write_u16(0x01fe, return_addr);
@@ -2424,7 +2428,7 @@ mod test {
 
         // Verify RTI restored the status and PC correctly
         assert_eq!(cpu.status, expected_status);
-        assert_eq!(cpu.pc, return_addr);
+        assert_eq!(cpu.pc, return_addr + 1); // CPU stops at 0x8003 BRK so PC should be 0x8004
     }
 
     // ===== RTS (Return from Subroutine) Tests =====
