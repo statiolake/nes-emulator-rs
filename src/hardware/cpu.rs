@@ -1008,8 +1008,8 @@ impl Cpu {
 
     fn plp(&mut self, _op: &'static Opcode) {
         let value = self.stack_pop();
-        // when pulling from stack, B flag is ignored
-        self.status = Status::from_bits_truncate(value) & !Status::B_FLAG;
+        // when pulling from stack, B flag is ignored, and RESERVED flag is always set.
+        self.status = Status::from_bits_truncate(value) & !Status::B_FLAG | Status::RESERVED;
     }
 
     fn rol(&mut self, op: &'static Opcode) {
