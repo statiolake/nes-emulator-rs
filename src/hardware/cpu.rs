@@ -102,6 +102,7 @@ impl AddressingMode {
     }
 }
 
+#[derive(Debug)]
 pub struct Opcode {
     pub code: u8,
     pub name: &'static str,
@@ -1051,6 +1052,7 @@ impl Cpu {
         }
 
         self.status.set(Status::CARRY, next_carry);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn ror(&mut self, op: &'static Opcode) {
@@ -1073,6 +1075,7 @@ impl Cpu {
         }
 
         self.status.set(Status::CARRY, next_carry);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn rti(&mut self, _op: &'static Opcode) {
