@@ -5,13 +5,17 @@ use itertools::Itertools as _;
 use crate::hardware::bus::Bus;
 
 bitflags::bitflags! {
-    #[derive(Debug, Eq, PartialEq)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct Status: u8 {
         const CARRY = 0b0000_0001;
         const ZERO = 0b0000_0010;
         const INTERRUPT_DISABLE = 0b0000_0100;
-        const DECIMAL_MODE = 0b0000_1000; // not supported on NES
-        const BREAK_COMMAND = 0b0001_0000;
+         // Decimal mode is actually not supported on NES but you can freely set and remove the
+         // flag by instructions.
+        const DECIMAL_MODE = 0b0000_1000;
+        // B Flag is set when status is pushed by PHP or BRK instructions and not set when pushed
+        // by interrupts.
+        const B_FLAG = 0b0001_0000;
         const RESERVED = 0b0010_0000;
         const OVERFLOW = 0b0100_0000;
         const NEGATIVE = 0b1000_0000;
@@ -34,7 +38,7 @@ impl fmt::Display for Status {
         maybe_set(Status::ZERO, 'Z')?;
         maybe_set(Status::INTERRUPT_DISABLE, 'I')?;
         // maybe_set(Status::DECIMAL_MODE, 'D')?;
-        maybe_set(Status::BREAK_COMMAND, 'B')?;
+        maybe_set(Status::B_FLAG, 'B')?;
         maybe_set(Status::OVERFLOW, 'V')?;
         maybe_set(Status::NEGATIVE, 'N')?;
 
@@ -989,7 +993,8 @@ impl Cpu {
     }
 
     fn php(&mut self, _op: &'static Opcode) {
-        let value = self.status.bits();
+        // Set the B flag when pushing to stack by instruction
+        let value = (self.status | Status::B_FLAG).bits();
         self.stack_push(value);
     }
 
@@ -1003,7 +1008,8 @@ impl Cpu {
 
     fn plp(&mut self, _op: &'static Opcode) {
         let value = self.stack_pop();
-        self.status = Status::from_bits_truncate(value);
+        // when pulling from stack, B flag is ignored
+        self.status = Status::from_bits_truncate(value) & !Status::B_FLAG;
     }
 
     fn rol(&mut self, op: &'static Opcode) {
@@ -2332,18 +2338,14 @@ mod test {
     fn test_0x28_plp() {
         let bus = create_bus(&[0x28, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.bus.write(
-            0x01ff,
-            (Status::INTERRUPT_DISABLE | Status::BREAK_COMMAND).bits(),
-        );
+        cpu.bus
+            .write(0x01ff, (Status::INTERRUPT_DISABLE | Status::B_FLAG).bits());
         cpu.reset();
         cpu.sp = 0xfe;
         cpu.run();
 
-        assert_eq!(
-            cpu.status,
-            Status::INTERRUPT_DISABLE | Status::BREAK_COMMAND
-        );
+        // B Flag should be ignored when pulling status
+        assert_eq!(cpu.status, Status::INTERRUPT_DISABLE);
     }
 
     // ===== ROL (Rotate Left) Tests =====
