@@ -831,7 +831,10 @@ impl Cpu {
 
         self.status.set(Status::CARRY, self.reg_x >= value);
         self.status.set(Status::ZERO, self.reg_x == value);
-        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
+        self.status.set(
+            Status::NEGATIVE,
+            (self.reg_x.wrapping_sub(value)) & SIGN_BIT != 0,
+        );
     }
 
     fn cpy(&mut self, op: &'static Opcode) {
@@ -842,7 +845,10 @@ impl Cpu {
 
         self.status.set(Status::CARRY, self.reg_y >= value);
         self.status.set(Status::ZERO, self.reg_y == value);
-        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
+        self.status.set(
+            Status::NEGATIVE,
+            (self.reg_y.wrapping_sub(value)) & SIGN_BIT != 0,
+        );
     }
 
     fn dec(&mut self, op: &'static Opcode) {
