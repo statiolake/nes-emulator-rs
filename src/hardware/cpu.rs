@@ -645,19 +645,28 @@ impl Cpu {
             .expect("ADC requires an address operand");
         let reg_a = self.reg_a;
         let value = self.bus.read(addr);
-        let (result, carry) = self.reg_a.overflowing_add(value);
+        let carry = if self.status.contains(Status::CARRY) {
+            1
+        } else {
+            0
+        };
 
-        // To check overflow, emulate the result in i32 space and check the sign differs
-        let result_signum = if result & SIGN_BIT != 0 { -1 } else { 1 };
-        let result_i32 = (reg_a as i8 as i32) + (value as i8 as i32);
-        let overflow = result_i32.signum() * result_signum < 0;
+        let res = reg_a.wrapping_add(value).wrapping_add(carry);
+        let res_signed = (reg_a as i8)
+            .wrapping_add(value as i8)
+            .wrapping_add(carry as i8);
 
-        self.reg_a = result;
+        let res_ext = u16::from(reg_a) + u16::from(value) + u16::from(carry);
+        let res_ext_signed = i16::from(reg_a as i8) + i16::from(value as i8) + i16::from(carry);
 
-        self.status.set(Status::CARRY, carry);
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::OVERFLOW, overflow);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.reg_a = res;
+        self.status.set(Status::CARRY, res_ext > u16::from(res));
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(
+            Status::OVERFLOW,
+            i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
+        );
+        self.status.set(Status::NEGATIVE, res_signed < 0);
     }
 
     fn and(&mut self, op: &'static Opcode) {
