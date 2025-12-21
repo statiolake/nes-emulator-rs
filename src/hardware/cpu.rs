@@ -660,7 +660,8 @@ impl Cpu {
         let res_ext_signed = i16::from(reg_a as i8) + i16::from(value as i8) + i16::from(carry);
 
         self.reg_a = res;
-        self.status.set(Status::CARRY, res_ext > u16::from(res));
+        // In ADC, carry is set if result > 255
+        self.status.set(Status::CARRY, res_ext > u16::from(u8::MAX));
         self.status.set(Status::ZERO, res == 0);
         self.status.set(
             Status::OVERFLOW,
@@ -1087,18 +1088,34 @@ impl Cpu {
         let addr = self
             .operand_addr_next(_op.mode)
             .expect("SBC requires an address operand");
+        let reg_a = self.reg_a;
         let value = self.bus.read(addr);
-        let (result, borrow) = self.reg_a.overflowing_sub(value);
-        let result_signum = if result & SIGN_BIT != 0 { -1 } else { 1 };
-        let result_i32 = (self.reg_a as i8 as i32) - (value as i8 as i32);
-        let overflow = result_i32.signum() * result_signum < 0;
+        let carry = if self.status.contains(Status::CARRY) {
+            0
+        } else {
+            1
+        };
 
-        self.reg_a = result;
+        let res = reg_a.wrapping_sub(value).wrapping_sub(carry);
+        let res_signed = (reg_a as i8)
+            .wrapping_sub(value as i8)
+            .wrapping_sub(carry as i8);
 
-        self.status.set(Status::CARRY, !borrow);
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::OVERFLOW, overflow);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        let res_ext = u16::from(reg_a)
+            .wrapping_sub(u16::from(value))
+            .wrapping_sub(u16::from(carry));
+        let res_ext_signed = i16::from(reg_a as i8) - i16::from(value as i8) - i16::from(carry);
+
+        self.reg_a = res;
+        // in SBC, carry is set when no borrow is needed
+        self.status
+            .set(Status::CARRY, res_ext <= u16::from(u8::MAX));
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(
+            Status::OVERFLOW,
+            i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
+        );
+        self.status.set(Status::NEGATIVE, res_signed < 0);
     }
 
     fn sec(&mut self, _op: &'static Opcode) {
@@ -2527,6 +2544,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.reset();
         cpu.reg_a = 0x50;
+        cpu.status.insert(Status::CARRY); // Set carry before operation to prevent borrow
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x20);
@@ -2541,6 +2559,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.reset();
         cpu.reg_a = 0x50;
+        cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x90);
@@ -2555,6 +2574,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.reset();
         cpu.reg_a = 0xc0;
+        cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x70);
@@ -2569,6 +2589,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.reset();
         cpu.reg_a = 0x50;
+        cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x30);
@@ -2583,6 +2604,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.reset();
         cpu.reg_a = 0xd0;
+        cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x30);
