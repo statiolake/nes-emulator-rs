@@ -808,7 +808,10 @@ impl Cpu {
 
         self.status.set(Status::CARRY, self.reg_a >= value);
         self.status.set(Status::ZERO, self.reg_a == value);
-        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
+        self.status.set(
+            Status::NEGATIVE,
+            (self.reg_a.wrapping_sub(value)) & SIGN_BIT != 0,
+        );
     }
 
     fn cpx(&mut self, op: &'static Opcode) {
@@ -1691,7 +1694,9 @@ mod test {
         cpu.reg_a = 0x50;
         cpu.run();
 
+        assert!(cpu.status.contains(Status::CARRY));
         assert!(cpu.status.contains(Status::ZERO));
+        assert!(!cpu.status.contains(Status::NEGATIVE));
     }
 
     #[test]
