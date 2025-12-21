@@ -1076,7 +1076,9 @@ impl Cpu {
     }
 
     fn rti(&mut self, _op: &'static Opcode) {
-        self.status = Status::from_bits_truncate(self.stack_pop());
+        // when pulling from stack, B flag is not set and RESERVED flag is always set.
+        self.status =
+            Status::from_bits_truncate(self.stack_pop()) & !Status::B_FLAG | Status::RESERVED;
         self.pc = self.stack_pop_u16();
     }
 
@@ -2467,7 +2469,7 @@ mod test {
         cpu.run();
 
         // Verify RTI restored the status and PC correctly
-        assert_eq!(cpu.status, expected_status);
+        assert_eq!(cpu.status, expected_status | Status::RESERVED);
         assert_eq!(cpu.pc, return_addr + 1); // CPU stops at 0x8003 BRK so PC should be 0x8004
     }
 
