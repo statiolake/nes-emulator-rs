@@ -1439,7 +1439,7 @@ impl Cpu {
     }
 
     fn nop2(&mut self, _op: &'static Opcode) {
-        todo!()
+        // NOP
     }
 
     fn rla(&mut self, _op: &'static Opcode) {
