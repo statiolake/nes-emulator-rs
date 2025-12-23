@@ -1419,7 +1419,7 @@ impl Cpu {
     }
 
     fn dop(&mut self, _op: &'static Opcode) {
-        todo!()
+        // Double NOP
     }
 
     fn isc(&mut self, _op: &'static Opcode) {
