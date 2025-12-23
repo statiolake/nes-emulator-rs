@@ -1434,8 +1434,16 @@ impl Cpu {
         todo!()
     }
 
-    fn lax(&mut self, _op: &'static Opcode) {
-        todo!()
+    fn lax(&mut self, op: &'static Opcode) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("LAX requires an address operand");
+        let value = self.bus.read(addr);
+        self.reg_a = value;
+        self.reg_x = value;
+
+        self.status.set(Status::ZERO, value == 0);
+        self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
     fn nop2(&mut self, _op: &'static Opcode) {
