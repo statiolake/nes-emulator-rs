@@ -1474,7 +1474,17 @@ impl Cpu {
     }
 
     fn slo(&mut self, _op: &'static Opcode) {
-        todo!()
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("SLO requires an address operand");
+        let value = self.bus.read(addr);
+        let carry = value & 0b1000_0000 != 0;
+        let result = value.wrapping_shl(1);
+        self.bus.write(addr, result);
+
+        self.status.set(Status::CARRY, carry);
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn sre(&mut self, _op: &'static Opcode) {
