@@ -1369,12 +1369,29 @@ impl Cpu {
 
     // unofficial opcodes
 
-    fn aac(&mut self, _op: &'static Opcode) {
-        todo!()
+    fn aac(&mut self, op: &'static Opcode) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("AAC requires an address operand");
+        let reg_a = self.reg_a;
+        let value = self.bus.read(addr);
+        let result = reg_a & value;
+        self.reg_a = result;
+
+        self.status.set(Status::CARRY, result & SIGN_BIT != 0);
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn aax(&mut self, _op: &'static Opcode) {
-        todo!()
+    fn aax(&mut self, op: &'static Opcode) {
+        let result = self.reg_a & self.reg_x;
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("AAX requires an address operand");
+        self.bus.write(addr, result);
+
+        self.status.set(Status::ZERO, result == 0);
+        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
     fn arr(&mut self, _op: &'static Opcode) {
