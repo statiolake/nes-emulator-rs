@@ -1466,7 +1466,23 @@ impl Cpu {
     }
 
     fn rla(&mut self, _op: &'static Opcode) {
-        todo!()
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("RLA requires an address operand");
+        let value = self.bus.read(addr);
+        let next_carry = value & 0b0000_0001 != 0;
+        let mut result = value >> 1;
+        if self.status.contains(Status::CARRY) {
+            result |= 0b1000_0000;
+        }
+        self.bus.write(addr, result);
+
+        // AND with accumulator
+        let anded = self.reg_a & result;
+
+        self.status.set(Status::CARRY, next_carry); // FIXME
+        self.status.set(Status::NEGATIVE, anded & SIGN_BIT != 0);
+        self.status.set(Status::ZERO, anded == 0);
     }
 
     fn rra(&mut self, _op: &'static Opcode) {
