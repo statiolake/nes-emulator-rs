@@ -1471,7 +1471,7 @@ impl Cpu {
     }
 
     fn top(&mut self, _op: &'static Opcode) {
-        todo!()
+        // Triple NOP
     }
 
     fn xaa(&mut self, _op: &'static Opcode) {
