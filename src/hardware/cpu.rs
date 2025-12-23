@@ -1415,7 +1415,14 @@ impl Cpu {
     }
 
     fn dcp(&mut self, _op: &'static Opcode) {
-        todo!()
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("DCP requires an address operand");
+        let value = self.bus.read(addr);
+        let result = value.wrapping_sub(1);
+        self.bus.write(addr, result);
+
+        self.status.set(Status::CARRY, self.reg_a >= result);
     }
 
     fn dop(&mut self, _op: &'static Opcode) {
