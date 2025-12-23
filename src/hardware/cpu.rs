@@ -1251,12 +1251,16 @@ impl Cpu {
         self.pc = self.stack_pop_u16().wrapping_add(1);
     }
 
-    fn sbc(&mut self, _op: &'static Opcode) {
+    fn sbc(&mut self, op: &'static Opcode) {
         let addr = self
-            .operand_addr_next(_op.mode)
+            .operand_addr_next(op.mode)
             .expect("SBC requires an address operand");
-        let reg_a = self.reg_a;
         let value = self.bus.read(addr);
+        self.sbc_impl(value);
+    }
+
+    fn sbc_impl(&mut self, value: u8) {
+        let reg_a = self.reg_a;
         let carry = if self.status.contains(Status::CARRY) {
             0
         } else {
@@ -1429,8 +1433,16 @@ impl Cpu {
         // Double NOP
     }
 
-    fn isc(&mut self, _op: &'static Opcode) {
-        todo!()
+    fn isc(&mut self, op: &'static Opcode) {
+        let addr = self
+            .operand_addr_next(op.mode)
+            .expect("ISC requires an address operand");
+        let value = self.bus.read(addr);
+        let incremented = value.wrapping_add(1);
+        self.bus.write(addr, incremented);
+
+        // then SBC
+        self.sbc_impl(incremented);
     }
 
     fn kil(&mut self, _op: &'static Opcode) {
