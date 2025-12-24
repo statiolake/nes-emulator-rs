@@ -104,6 +104,35 @@ impl AddressingMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Address {
+    Mem(u16),
+    Accum,
+}
+
+impl Address {
+    fn read_from(self, cpu: &mut Cpu) -> u8 {
+        match self {
+            Address::Mem(addr) => cpu.bus.read(addr),
+            Address::Accum => cpu.reg_a,
+        }
+    }
+
+    fn write_to(self, cpu: &mut Cpu, value: u8) {
+        match self {
+            Address::Mem(addr) => cpu.bus.write(addr, value),
+            Address::Accum => cpu.reg_a = value,
+        }
+    }
+
+    fn expect_mem(self) -> u16 {
+        match self {
+            Address::Mem(addr) => addr,
+            Address::Accum => panic!("expect_mem() called on Accum"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Opcode {
     pub code: u8,
@@ -736,33 +765,33 @@ impl Cpu {
         u16::from_le_bytes([lo, hi])
     }
 
-    fn operand_addr_next(&mut self, mode: AddressingMode) -> Option<u16> {
+    fn operand_addr_next(&mut self, mode: AddressingMode) -> Address {
         use AddressingMode::*;
 
         match mode {
-            Immediate => Some(self.pc_next()),
-            ZeroPage => Some(u16::from(self.read_pc_next())),
+            Immediate => Address::Mem(self.pc_next()),
+            ZeroPage => Address::Mem(u16::from(self.read_pc_next())),
             ZeroPageX => {
                 let addr = self.read_pc_next();
-                Some(u16::from(addr.wrapping_add(self.reg_x)))
+                Address::Mem(u16::from(addr.wrapping_add(self.reg_x)))
             }
             ZeroPageY => {
                 let addr = self.read_pc_next();
-                Some(u16::from(addr.wrapping_add(self.reg_y)))
+                Address::Mem(u16::from(addr.wrapping_add(self.reg_y)))
             }
-            Absolute => Some(self.read_pc_u16_next()),
+            Absolute => Address::Mem(self.read_pc_u16_next()),
             AbsoluteX => {
                 let addr = self.read_pc_u16_next();
-                Some(addr.wrapping_add(u16::from(self.reg_x)))
+                Address::Mem(addr.wrapping_add(u16::from(self.reg_x)))
             }
             AbsoluteY => {
                 let addr = self.read_pc_u16_next();
-                Some(addr.wrapping_add(u16::from(self.reg_y)))
+                Address::Mem(addr.wrapping_add(u16::from(self.reg_y)))
             }
             Relative => {
                 // this relative offset is signed
                 let offset = self.read_pc_next() as i8;
-                Some(self.pc.wrapping_add_signed(i16::from(offset)))
+                Address::Mem(self.pc.wrapping_add_signed(i16::from(offset)))
             }
             Indirect => {
                 let addr = self.read_pc_u16_next();
@@ -776,7 +805,7 @@ impl Cpu {
                     .bus
                     .read(u16::from_le_bytes([lo_addr.wrapping_add(1), hi_addr]));
 
-                Some(u16::from_le_bytes([lo, hi]))
+                Address::Mem(u16::from_le_bytes([lo, hi]))
             }
             IndexedIndirect => {
                 let base = self.read_pc_next();
@@ -785,7 +814,7 @@ impl Cpu {
                 let lo = self.bus.read(u16::from(offsetted));
                 let hi = self.bus.read(u16::from(offsetted.wrapping_add(1)));
                 let addr = u16::from_le_bytes([lo, hi]);
-                Some(addr)
+                Address::Mem(addr)
             }
             IndirectIndexed => {
                 let base = self.read_pc_next();
@@ -794,9 +823,9 @@ impl Cpu {
                 let hi = self.bus.read(u16::from(base.wrapping_add(1)));
                 let addr = u16::from_le_bytes([lo, hi]);
 
-                Some(addr.wrapping_add(u16::from(self.reg_y)))
+                Address::Mem(addr.wrapping_add(u16::from(self.reg_y)))
             }
-            Accumulator => None,
+            Accumulator => Address::Accum,
             Implied => {
                 panic!("Implied addressing mode does not have an operand address")
             }
@@ -804,11 +833,9 @@ impl Cpu {
     }
 
     fn adc(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("ADC requires an address operand");
+        let addr = self.operand_addr_next(op.mode);
         let reg_a = self.reg_a;
-        let value = self.bus.read(addr);
+        let value = addr.read_from(self);
         let carry = if self.status.contains(Status::CARRY) {
             1
         } else {
@@ -835,11 +862,9 @@ impl Cpu {
     }
 
     fn and(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("AND requires an address operand");
+        let addr = self.operand_addr_next(op.mode);
         let reg_a = self.reg_a;
-        let value = self.bus.read(addr);
+        let value = addr.read_from(self);
         let result = reg_a & value;
         self.reg_a = result;
 
@@ -849,19 +874,11 @@ impl Cpu {
 
     fn asl(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = if let Some(addr) = addr {
-            self.bus.read(addr)
-        } else {
-            self.reg_a
-        };
+        let value = addr.read_from(self);
 
         let carry = value & 0b1000_0000 != 0;
         let result = value.wrapping_shl(1);
-        if let Some(addr) = addr {
-            self.bus.write(addr, result);
-        } else {
-            self.reg_a = result;
-        }
+        addr.write_to(self, result);
 
         self.status.set(Status::CARRY, carry);
         self.status.set(Status::ZERO, result == 0);
@@ -869,37 +886,29 @@ impl Cpu {
     }
 
     fn bcc(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BCC requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::CARRY) {
             self.pc = addr;
         }
     }
 
     fn bcs(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BCS requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::CARRY) {
             self.pc = addr;
         }
     }
 
     fn beq(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BEQ requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::ZERO) {
             self.pc = addr;
         }
     }
 
     fn bit(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BIT requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         let mask = self.reg_a;
         let result = value & mask;
 
@@ -909,27 +918,21 @@ impl Cpu {
     }
 
     fn bmi(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BMI requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::NEGATIVE) {
             self.pc = addr;
         }
     }
 
     fn bne(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BNE requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::ZERO) {
             self.pc = addr;
         }
     }
 
     fn bpl(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BPL requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::NEGATIVE) {
             self.pc = addr;
         }
@@ -940,18 +943,14 @@ impl Cpu {
     }
 
     fn bvc(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BVC requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::OVERFLOW) {
             self.pc = addr;
         }
     }
 
     fn bvs(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("BVS requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::OVERFLOW) {
             self.pc = addr;
         }
@@ -975,10 +974,8 @@ impl Cpu {
     }
 
     fn cmp(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("CMP requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
 
         self.status.set(Status::CARRY, self.reg_a >= value);
         self.status.set(Status::ZERO, self.reg_a == value);
@@ -989,10 +986,8 @@ impl Cpu {
     }
 
     fn cpx(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("CPX requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
 
         self.status.set(Status::CARRY, self.reg_x >= value);
         self.status.set(Status::ZERO, self.reg_x == value);
@@ -1003,10 +998,8 @@ impl Cpu {
     }
 
     fn cpy(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("CPY requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
 
         self.status.set(Status::CARRY, self.reg_y >= value);
         self.status.set(Status::ZERO, self.reg_y == value);
@@ -1017,12 +1010,10 @@ impl Cpu {
     }
 
     fn dec(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("DEC requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         let result = value.wrapping_sub(1);
-        self.bus.write(addr, result);
+        addr.write_to(self, result);
 
         self.status.set(Status::ZERO, result == 0);
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
@@ -1045,10 +1036,8 @@ impl Cpu {
     }
 
     fn eor(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("EOR requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
 
         let result = self.reg_a ^ value;
         self.reg_a = result;
@@ -1058,12 +1047,10 @@ impl Cpu {
     }
 
     fn inc(&mut self, _op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(_op.mode)
-            .expect("INC requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(_op.mode);
+        let value = addr.read_from(self);
         let result = value.wrapping_add(1);
-        self.bus.write(addr, result);
+        addr.write_to(self, result);
 
         self.status.set(Status::ZERO, result == 0);
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
@@ -1086,16 +1073,12 @@ impl Cpu {
     }
 
     fn jmp(&mut self, _op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(_op.mode)
-            .expect("JMP requires an address operand");
+        let addr = self.operand_addr_next(_op.mode).expect_mem();
         self.pc = addr;
     }
 
     fn jsr(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("JSR requires an address operand");
+        let addr = self.operand_addr_next(op.mode).expect_mem();
 
         self.stack_push_u16(self.pc.wrapping_sub(1));
 
@@ -1103,10 +1086,8 @@ impl Cpu {
     }
 
     fn lda(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("LDA requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         self.reg_a = value;
 
         self.status.set(Status::ZERO, value == 0);
@@ -1114,21 +1095,17 @@ impl Cpu {
     }
 
     fn ldx(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("LDX requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         self.reg_x = value;
 
         self.status.set(Status::ZERO, value == 0);
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn ldy(&mut self, _op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(_op.mode)
-            .expect("LDY requires an address operand");
-        let value = self.bus.read(addr);
+    fn ldy(&mut self, op: &'static Opcode) {
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         self.reg_y = value;
 
         self.status.set(Status::ZERO, value == 0);
@@ -1137,19 +1114,11 @@ impl Cpu {
 
     fn lsr(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = if let Some(addr) = addr {
-            self.bus.read(addr)
-        } else {
-            self.reg_a
-        };
+        let value = addr.read_from(self);
 
         let carry = value & 0b0000_0001 != 0;
         let result = value >> 1;
-        if let Some(addr) = addr {
-            self.bus.write(addr, result);
-        } else {
-            self.reg_a = result;
-        }
+        addr.write_to(self, result);
 
         self.status.set(Status::CARRY, carry);
         self.status.set(Status::ZERO, result == 0);
@@ -1159,10 +1128,8 @@ impl Cpu {
     fn nop(&mut self, _op: &'static Opcode) {}
 
     fn ora(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("ORA requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         let result = self.reg_a | value;
         self.reg_a = result;
 
@@ -1197,22 +1164,14 @@ impl Cpu {
 
     fn rol(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = if let Some(addr) = addr {
-            self.bus.read(addr)
-        } else {
-            self.reg_a
-        };
+        let value = addr.read_from(self);
         let next_carry = value & 0b1000_0000 != 0;
         let mut result = value << 1;
         if self.status.contains(Status::CARRY) {
             result |= 0b0000_0001;
         }
 
-        if let Some(addr) = addr {
-            self.bus.write(addr, result);
-        } else {
-            self.reg_a = result;
-        }
+        addr.write_to(self, result);
 
         self.status.set(Status::CARRY, next_carry);
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
@@ -1220,22 +1179,14 @@ impl Cpu {
 
     fn ror(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = if let Some(addr) = addr {
-            self.bus.read(addr)
-        } else {
-            self.reg_a
-        };
+        let value = addr.read_from(self);
         let next_carry = value & 0b0000_0001 != 0;
         let mut result = value >> 1;
         if self.status.contains(Status::CARRY) {
             result |= 0b1000_0000;
         }
 
-        if let Some(addr) = addr {
-            self.bus.write(addr, result);
-        } else {
-            self.reg_a = result;
-        }
+        addr.write_to(self, result);
 
         self.status.set(Status::CARRY, next_carry);
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
@@ -1253,41 +1204,9 @@ impl Cpu {
     }
 
     fn sbc(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("SBC requires an address operand");
-        let value = self.bus.read(addr);
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
         self.sbc_impl(value);
-    }
-
-    fn sbc_impl(&mut self, value: u8) {
-        let reg_a = self.reg_a;
-        let carry = if self.status.contains(Status::CARRY) {
-            0
-        } else {
-            1
-        };
-
-        let res = reg_a.wrapping_sub(value).wrapping_sub(carry);
-        let res_signed = (reg_a as i8)
-            .wrapping_sub(value as i8)
-            .wrapping_sub(carry as i8);
-
-        let res_ext = u16::from(reg_a)
-            .wrapping_sub(u16::from(value))
-            .wrapping_sub(u16::from(carry));
-        let res_ext_signed = i16::from(reg_a as i8) - i16::from(value as i8) - i16::from(carry);
-
-        self.reg_a = res;
-        // in SBC, carry is set when no borrow is needed
-        self.status
-            .set(Status::CARRY, res_ext <= u16::from(u8::MAX));
-        self.status.set(Status::ZERO, res == 0);
-        self.status.set(
-            Status::OVERFLOW,
-            i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
-        );
-        self.status.set(Status::NEGATIVE, res_signed < 0);
     }
 
     fn sec(&mut self, _op: &'static Opcode) {
@@ -1304,24 +1223,18 @@ impl Cpu {
     }
 
     fn sta(&mut self, op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(op.mode)
-            .expect("STA requires an address operand");
-        self.bus.write(addr, self.reg_a);
+        let addr = self.operand_addr_next(op.mode);
+        addr.write_to(self, self.reg_a);
     }
 
     fn stx(&mut self, _op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(_op.mode)
-            .expect("STX requires an address operand");
-        self.bus.write(addr, self.reg_x);
+        let addr = self.operand_addr_next(_op.mode);
+        addr.write_to(self, self.reg_x);
     }
 
     fn sty(&mut self, _op: &'static Opcode) {
-        let addr = self
-            .operand_addr_next(_op.mode)
-            .expect("STY requires an address operand");
-        self.bus.write(addr, self.reg_y);
+        let addr = self.operand_addr_next(_op.mode);
+        addr.write_to(self, self.reg_y);
     }
 
     fn tax(&mut self, _op: &'static Opcode) {
@@ -1377,7 +1290,7 @@ impl Cpu {
     fn aac(&mut self, op: &'static Opcode) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("AAC requires an address operand");
+            .expect_mem("AAC requires an address operand");
         let reg_a = self.reg_a;
         let value = self.bus.read(addr);
         let result = reg_a & value;
@@ -1392,7 +1305,7 @@ impl Cpu {
         let result = self.reg_a & self.reg_x;
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("AAX requires an address operand");
+            .expect_mem("AAX requires an address operand");
         self.bus.write(addr, result);
 
         self.status.set(Status::ZERO, result == 0);
@@ -1422,7 +1335,7 @@ impl Cpu {
     fn dcp(&mut self, _op: &'static Opcode) {
         let addr = self
             .operand_addr_next(_op.mode)
-            .expect("DCP requires an address operand");
+            .expect_mem("DCP requires an address operand");
         let value = self.bus.read(addr);
         let result = value.wrapping_sub(1);
         self.bus.write(addr, result);
@@ -1437,7 +1350,7 @@ impl Cpu {
     fn isc(&mut self, op: &'static Opcode) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("ISC requires an address operand");
+            .expect_mem("ISC requires an address operand");
         let value = self.bus.read(addr);
         let incremented = value.wrapping_add(1);
         self.bus.write(addr, incremented);
@@ -1457,7 +1370,7 @@ impl Cpu {
     fn lax(&mut self, op: &'static Opcode) {
         let addr = self
             .operand_addr_next(op.mode)
-            .expect("LAX requires an address operand");
+            .expect_mem("LAX requires an address operand");
         let value = self.bus.read(addr);
         self.reg_a = value;
         self.reg_x = value;
@@ -1469,7 +1382,7 @@ impl Cpu {
     fn rla(&mut self, _op: &'static Opcode) {
         let addr = self
             .operand_addr_next(_op.mode)
-            .expect("RLA requires an address operand");
+            .expect_mem("RLA requires an address operand");
         let value = self.bus.read(addr);
         let next_carry = value & 0b0000_0001 != 0;
         let mut result = value >> 1;
@@ -1493,7 +1406,7 @@ impl Cpu {
     fn slo(&mut self, _op: &'static Opcode) {
         let addr = self
             .operand_addr_next(_op.mode)
-            .expect("SLO requires an address operand");
+            .expect_mem("SLO requires an address operand");
         let value = self.bus.read(addr);
         let carry = value & 0b1000_0000 != 0;
         let result = value.wrapping_shl(1);
@@ -1507,7 +1420,7 @@ impl Cpu {
     fn sre(&mut self, _op: &'static Opcode) {
         let addr = self
             .operand_addr_next(_op.mode)
-            .expect("SRE requires an address operand");
+            .expect_mem("SRE requires an address operand");
         let value = self.bus.read(addr);
         let carry = value & 0b0000_0001 != 0;
         let result = value >> 1;
@@ -1540,6 +1453,40 @@ impl Cpu {
 
     fn xas(&mut self, _op: &'static Opcode) {
         todo!()
+    }
+
+    // impls
+
+    fn and_impl(&mut self, addr: Option<u16>) {}
+
+    fn sbc_impl(&mut self, value: u8) {
+        let reg_a = self.reg_a;
+        let carry = if self.status.contains(Status::CARRY) {
+            0
+        } else {
+            1
+        };
+
+        let res = reg_a.wrapping_sub(value).wrapping_sub(carry);
+        let res_signed = (reg_a as i8)
+            .wrapping_sub(value as i8)
+            .wrapping_sub(carry as i8);
+
+        let res_ext = u16::from(reg_a)
+            .wrapping_sub(u16::from(value))
+            .wrapping_sub(u16::from(carry));
+        let res_ext_signed = i16::from(reg_a as i8) - i16::from(value as i8) - i16::from(carry);
+
+        self.reg_a = res;
+        // in SBC, carry is set when no borrow is needed
+        self.status
+            .set(Status::CARRY, res_ext <= u16::from(u8::MAX));
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(
+            Status::OVERFLOW,
+            i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
+        );
+        self.status.set(Status::NEGATIVE, res_signed < 0);
     }
 }
 
