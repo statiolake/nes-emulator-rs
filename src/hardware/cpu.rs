@@ -92,6 +92,7 @@ pub enum AddressingMode {
 }
 
 impl AddressingMode {
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(self) -> usize {
         use AddressingMode::*;
         match self {
