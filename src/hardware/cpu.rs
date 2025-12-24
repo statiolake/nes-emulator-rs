@@ -1505,7 +1505,21 @@ impl Cpu {
     }
 
     fn sre(&mut self, _op: &'static Opcode) {
-        todo!()
+        let addr = self
+            .operand_addr_next(_op.mode)
+            .expect("SRE requires an address operand");
+        let value = self.bus.read(addr);
+        let carry = value & 0b0000_0001 != 0;
+        let result = value >> 1;
+        self.bus.write(addr, result);
+
+        // EOR (XOR) with accumulator
+        let xored = self.reg_a ^ result;
+        self.reg_a = xored;
+
+        self.status.set(Status::CARRY, carry);
+        self.status.set(Status::ZERO, xored == 0);
+        self.status.set(Status::NEGATIVE, xored & SIGN_BIT != 0);
     }
 
     fn sxa(&mut self, _op: &'static Opcode) {
