@@ -397,14 +397,14 @@ pub const CPU_OPCODES: &[Opcode] = &[
     Opcode::new_unofficial(0x7F, "RRA", AddressingMode::AbsoluteX, 7, Cpu::rra),
     Opcode::new_unofficial(0x80, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
     Opcode::new_unofficial(0x82, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
-    Opcode::new_unofficial(0x83, "AAX", AddressingMode::IndexedIndirect, 6, Cpu::aax),
-    Opcode::new_unofficial(0x87, "AAX", AddressingMode::ZeroPage, 3, Cpu::aax),
+    Opcode::new_unofficial(0x83, "SAX", AddressingMode::IndexedIndirect, 6, Cpu::sax),
+    Opcode::new_unofficial(0x87, "SAX", AddressingMode::ZeroPage, 3, Cpu::sax),
     Opcode::new_unofficial(0x89, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
     Opcode::new_unofficial(0x8B, "XAA", AddressingMode::Immediate, 2, Cpu::xaa),
-    Opcode::new_unofficial(0x8F, "AAX", AddressingMode::Absolute, 4, Cpu::aax),
+    Opcode::new_unofficial(0x8F, "SAX", AddressingMode::Absolute, 4, Cpu::sax),
     Opcode::new_unofficial(0x92, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x93, "AXA", AddressingMode::IndirectIndexed, 6, Cpu::axa),
-    Opcode::new_unofficial(0x97, "AAX", AddressingMode::ZeroPageY, 4, Cpu::aax),
+    Opcode::new_unofficial(0x97, "SAX", AddressingMode::ZeroPageY, 4, Cpu::sax),
     Opcode::new_unofficial(0x9B, "XAS", AddressingMode::AbsoluteY, 5, Cpu::xas),
     Opcode::new_unofficial(0x9C, "SYA", AddressingMode::AbsoluteX, 5, Cpu::sya),
     Opcode::new_unofficial(0x9E, "SXA", AddressingMode::AbsoluteY, 5, Cpu::sxa),
@@ -1263,7 +1263,7 @@ impl Cpu {
         self.status.set(Status::CARRY, res & SIGN_BIT != 0);
     }
 
-    fn aax(&mut self, op: &'static Opcode) {
+    fn sax(&mut self, op: &'static Opcode) {
         let result = self.reg_a & self.reg_x;
         let addr = self.operand_addr_next(op.mode);
         addr.write_to(self, result);
