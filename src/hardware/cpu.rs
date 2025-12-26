@@ -137,7 +137,7 @@ impl Address {
 pub struct Opcode {
     pub code: u8,
     pub name: &'static str,
-    pub official: bool,
+    pub is_official: bool,
     pub mode: AddressingMode,
     pub cycles: u8,
     pub handler: fn(&mut Cpu, &'static Opcode),
@@ -154,7 +154,7 @@ impl Opcode {
         Opcode {
             code,
             name,
-            official: true,
+            is_official: true,
             mode,
             cycles,
             handler,
@@ -171,7 +171,7 @@ impl Opcode {
         Opcode {
             code,
             name,
-            official: false,
+            is_official: false,
             mode,
             cycles,
             handler,
@@ -341,18 +341,18 @@ pub const CPU_OPCODES: &[Opcode] = &[
     // Unofficial opcodes
     Opcode::new_unofficial(0x02, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x03, "SLO", AddressingMode::IndirectIndexed, 8, Cpu::slo),
-    Opcode::new_unofficial(0x04, "DOP", AddressingMode::ZeroPage, 3, Cpu::dop),
+    Opcode::new_unofficial(0x04, "NOP", AddressingMode::ZeroPage, 3, Cpu::dop),
     Opcode::new_unofficial(0x07, "SLO", AddressingMode::ZeroPage, 5, Cpu::slo),
     Opcode::new_unofficial(0x0B, "AAC", AddressingMode::Immediate, 2, Cpu::aac),
-    Opcode::new_unofficial(0x0C, "TOP", AddressingMode::Absolute, 4, Cpu::top),
+    Opcode::new_unofficial(0x0C, "NOP", AddressingMode::Absolute, 4, Cpu::top),
     Opcode::new_unofficial(0x0F, "SLO", AddressingMode::Absolute, 6, Cpu::slo),
     Opcode::new_unofficial(0x12, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x13, "SLO", AddressingMode::IndexedIndirect, 8, Cpu::slo),
-    Opcode::new_unofficial(0x14, "DOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
+    Opcode::new_unofficial(0x14, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
     Opcode::new_unofficial(0x17, "SLO", AddressingMode::ZeroPageX, 6, Cpu::slo),
     Opcode::new_unofficial(0x1A, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Opcode::new_unofficial(0x1B, "SLO", AddressingMode::AbsoluteY, 7, Cpu::slo),
-    Opcode::new_unofficial(0x1C, "TOP", AddressingMode::AbsoluteX, 4, Cpu::top),
+    Opcode::new_unofficial(0x1C, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0x1F, "SLO", AddressingMode::AbsoluteX, 7, Cpu::slo),
     Opcode::new_unofficial(0x22, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x23, "RLA", AddressingMode::IndirectIndexed, 8, Cpu::rla),
@@ -361,45 +361,45 @@ pub const CPU_OPCODES: &[Opcode] = &[
     Opcode::new_unofficial(0x2F, "RLA", AddressingMode::Absolute, 6, Cpu::rla),
     Opcode::new_unofficial(0x32, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x33, "RLA", AddressingMode::IndexedIndirect, 8, Cpu::rla),
-    Opcode::new_unofficial(0x34, "DOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
+    Opcode::new_unofficial(0x34, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
     Opcode::new_unofficial(0x37, "RLA", AddressingMode::ZeroPageX, 6, Cpu::rla),
     Opcode::new_unofficial(0x3A, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Opcode::new_unofficial(0x3B, "RLA", AddressingMode::AbsoluteY, 7, Cpu::rla),
-    Opcode::new_unofficial(0x3C, "TOP", AddressingMode::AbsoluteX, 4, Cpu::top),
+    Opcode::new_unofficial(0x3C, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0x3F, "RLA", AddressingMode::AbsoluteX, 7, Cpu::rla),
     Opcode::new_unofficial(0x42, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x43, "SRE", AddressingMode::IndirectIndexed, 8, Cpu::sre),
-    Opcode::new_unofficial(0x44, "DOP", AddressingMode::ZeroPage, 3, Cpu::dop),
+    Opcode::new_unofficial(0x44, "NOP", AddressingMode::ZeroPage, 3, Cpu::dop),
     Opcode::new_unofficial(0x47, "SRE", AddressingMode::ZeroPage, 5, Cpu::sre),
     Opcode::new_unofficial(0x4B, "ASR", AddressingMode::Immediate, 2, Cpu::asr),
     Opcode::new_unofficial(0x4F, "SRE", AddressingMode::Absolute, 6, Cpu::sre),
     Opcode::new_unofficial(0x52, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x53, "SRE", AddressingMode::IndexedIndirect, 8, Cpu::sre),
-    Opcode::new_unofficial(0x54, "DOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
+    Opcode::new_unofficial(0x54, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
     Opcode::new_unofficial(0x57, "SRE", AddressingMode::ZeroPageX, 6, Cpu::sre),
     Opcode::new_unofficial(0x5A, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Opcode::new_unofficial(0x5B, "SRE", AddressingMode::AbsoluteY, 7, Cpu::sre),
-    Opcode::new_unofficial(0x5C, "TOP", AddressingMode::AbsoluteX, 4, Cpu::top),
+    Opcode::new_unofficial(0x5C, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0x5F, "SRE", AddressingMode::AbsoluteX, 7, Cpu::sre),
     Opcode::new_unofficial(0x62, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x63, "RRA", AddressingMode::IndirectIndexed, 8, Cpu::rra),
-    Opcode::new_unofficial(0x64, "DOP", AddressingMode::ZeroPage, 3, Cpu::dop),
+    Opcode::new_unofficial(0x64, "NOP", AddressingMode::ZeroPage, 3, Cpu::dop),
     Opcode::new_unofficial(0x67, "RRA", AddressingMode::ZeroPage, 5, Cpu::rra),
     Opcode::new_unofficial(0x6B, "ARR", AddressingMode::Immediate, 2, Cpu::arr),
     Opcode::new_unofficial(0x6F, "RRA", AddressingMode::Absolute, 6, Cpu::rra),
     Opcode::new_unofficial(0x72, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0x73, "RRA", AddressingMode::IndexedIndirect, 8, Cpu::rra),
-    Opcode::new_unofficial(0x74, "DOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
+    Opcode::new_unofficial(0x74, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
     Opcode::new_unofficial(0x77, "RRA", AddressingMode::ZeroPageX, 6, Cpu::rra),
     Opcode::new_unofficial(0x7A, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Opcode::new_unofficial(0x7B, "RRA", AddressingMode::AbsoluteY, 7, Cpu::rra),
-    Opcode::new_unofficial(0x7C, "TOP", AddressingMode::AbsoluteX, 4, Cpu::top),
+    Opcode::new_unofficial(0x7C, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0x7F, "RRA", AddressingMode::AbsoluteX, 7, Cpu::rra),
-    Opcode::new_unofficial(0x80, "DOP", AddressingMode::Immediate, 2, Cpu::dop),
-    Opcode::new_unofficial(0x82, "DOP", AddressingMode::Immediate, 2, Cpu::dop),
+    Opcode::new_unofficial(0x80, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
+    Opcode::new_unofficial(0x82, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
     Opcode::new_unofficial(0x83, "AAX", AddressingMode::IndirectIndexed, 6, Cpu::aax),
     Opcode::new_unofficial(0x87, "AAX", AddressingMode::ZeroPage, 3, Cpu::aax),
-    Opcode::new_unofficial(0x89, "DOP", AddressingMode::Immediate, 2, Cpu::dop),
+    Opcode::new_unofficial(0x89, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
     Opcode::new_unofficial(0x8B, "XAA", AddressingMode::Immediate, 2, Cpu::xaa),
     Opcode::new_unofficial(0x8F, "AAX", AddressingMode::Absolute, 4, Cpu::aax),
     Opcode::new_unofficial(0x92, "KIL", AddressingMode::Implied, 0, Cpu::kil),
@@ -418,35 +418,38 @@ pub const CPU_OPCODES: &[Opcode] = &[
     Opcode::new_unofficial(0xB7, "LAX", AddressingMode::ZeroPageY, 4, Cpu::lax),
     Opcode::new_unofficial(0xBB, "LAR", AddressingMode::AbsoluteY, 4, Cpu::lar),
     Opcode::new_unofficial(0xBF, "LAX", AddressingMode::AbsoluteY, 4, Cpu::lax),
-    Opcode::new_unofficial(0xC2, "DOP", AddressingMode::Immediate, 2, Cpu::dop),
+    Opcode::new_unofficial(0xC2, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
     Opcode::new_unofficial(0xC3, "DCP", AddressingMode::IndirectIndexed, 8, Cpu::dcp),
     Opcode::new_unofficial(0xC7, "DCP", AddressingMode::ZeroPage, 5, Cpu::dcp),
     Opcode::new_unofficial(0xCB, "AXS", AddressingMode::Immediate, 2, Cpu::axs),
     Opcode::new_unofficial(0xCF, "DCP", AddressingMode::Absolute, 6, Cpu::dcp),
     Opcode::new_unofficial(0xD2, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0xD3, "DCP", AddressingMode::IndexedIndirect, 8, Cpu::dcp),
-    Opcode::new_unofficial(0xD4, "DOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
+    Opcode::new_unofficial(0xD4, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
     Opcode::new_unofficial(0xD7, "DCP", AddressingMode::ZeroPageX, 6, Cpu::dcp),
     Opcode::new_unofficial(0xDA, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Opcode::new_unofficial(0xDB, "DCP", AddressingMode::AbsoluteY, 7, Cpu::dcp),
-    Opcode::new_unofficial(0xDC, "TOP", AddressingMode::AbsoluteX, 4, Cpu::top),
+    Opcode::new_unofficial(0xDC, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0xDF, "DCP", AddressingMode::AbsoluteX, 7, Cpu::dcp),
-    Opcode::new_unofficial(0xE2, "DOP", AddressingMode::Immediate, 2, Cpu::dop),
+    Opcode::new_unofficial(0xE2, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
     Opcode::new_unofficial(0xE3, "ISC", AddressingMode::IndirectIndexed, 8, Cpu::isc),
     Opcode::new_unofficial(0xE7, "ISC", AddressingMode::ZeroPage, 5, Cpu::isc),
     Opcode::new_unofficial(0xEB, "SBC", AddressingMode::Immediate, 2, Cpu::sbc),
     Opcode::new_unofficial(0xEF, "ISC", AddressingMode::Absolute, 6, Cpu::isc),
     Opcode::new_unofficial(0xF2, "KIL", AddressingMode::Implied, 0, Cpu::kil),
     Opcode::new_unofficial(0xF3, "ISC", AddressingMode::IndexedIndirect, 8, Cpu::isc),
-    Opcode::new_unofficial(0xF4, "DOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
+    Opcode::new_unofficial(0xF4, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
     Opcode::new_unofficial(0xF7, "ISC", AddressingMode::ZeroPageX, 6, Cpu::isc),
     Opcode::new_unofficial(0xFA, "NOP", AddressingMode::Implied, 2, Cpu::nop),
     Opcode::new_unofficial(0xFB, "ISC", AddressingMode::AbsoluteY, 7, Cpu::isc),
-    Opcode::new_unofficial(0xFC, "TOP", AddressingMode::AbsoluteX, 4, Cpu::top),
+    Opcode::new_unofficial(0xFC, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0xFF, "ISC", AddressingMode::AbsoluteX, 7, Cpu::isc),
 ];
 
 pub struct Disassembled {
+    /// Whether the instruction is an official opcode
+    pub is_official: bool,
+
     /// An assembly-like notation of the instruction, e.g. "ORA ($33),Y"
     pub repr: String,
 
@@ -456,6 +459,7 @@ pub struct Disassembled {
 
 pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
     return inner(cpu, instr).unwrap_or_else(|| Disassembled {
+        is_official: true,
         repr: "???".to_string(),
         addr_value_hint: None,
     });
@@ -465,6 +469,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
 
         let op = cpu.op_table[instr[0] as usize]?;
         let op_name = op.name;
+        let is_official = op.is_official;
 
         let first = instr.get(1).copied();
         let second = instr.get(2).copied();
@@ -473,6 +478,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
             Immediate => {
                 let first = first?;
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} #${first:02X}"),
                     addr_value_hint: None,
                 }
@@ -481,6 +487,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let first = first?;
                 let value = cpu.bus.read(u16::from(first));
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${first:02X}"),
                     addr_value_hint: Some(format!("= {:02X}", value)),
                 }
@@ -490,6 +497,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let addr = first.wrapping_add(cpu.reg_x);
                 let value = cpu.bus.read(u16::from(addr));
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${first:02X},X"),
                     addr_value_hint: Some(format!("@ {addr:02X} = {value:02X}",)),
                 }
@@ -499,6 +507,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let addr = first.wrapping_add(cpu.reg_y);
                 let value = cpu.bus.read(u16::from(addr));
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${first:02X},Y"),
                     addr_value_hint: Some(format!("@ {addr:02X} = {value:02X}",)),
                 }
@@ -513,6 +522,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                     _ => Some(format!("= {value:02X}")),
                 };
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${addr:04X}"),
                     addr_value_hint,
                 }
@@ -524,6 +534,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let addr = base_addr.wrapping_add(u16::from(cpu.reg_x));
                 let value = cpu.bus.read(addr);
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${base_addr:04X},X"),
                     addr_value_hint: Some(format!("@ {addr:04X} = {value:02X}")),
                 }
@@ -535,6 +546,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let addr = base_addr.wrapping_add(u16::from(cpu.reg_y));
                 let value = cpu.bus.read(addr);
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${base_addr:04X},Y"),
                     addr_value_hint: Some(format!("@ {addr:04X} = {value:02X}")),
                 }
@@ -548,6 +560,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                     .wrapping_add(2)
                     .wrapping_add_signed(i16::from(offset));
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} ${addr:04X}"),
                     addr_value_hint: None,
                 }
@@ -568,6 +581,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
 
                 let addr = u16::from_le_bytes([lo, hi]);
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} (${ptr_addr:04X})"),
                     addr_value_hint: Some(format!("= {addr:04X}")),
                 }
@@ -581,6 +595,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let addr = u16::from_le_bytes([lo, hi]);
                 let value = cpu.bus.read(addr);
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} (${:02X},X)", first),
                     addr_value_hint: Some(format!("@ {offsetted:02X} = {addr:04X} = {value:02X}")),
                 }
@@ -594,15 +609,18 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
                 let addr = base_addr.wrapping_add(u16::from(cpu.reg_y));
                 let value = cpu.bus.read(addr);
                 Disassembled {
+                    is_official,
                     repr: format!("{op_name} (${:02X}),Y", first),
                     addr_value_hint: Some(format!("= {base_addr:04X} @ {addr:04X} = {value:02X}",)),
                 }
             }
             Accumulator => Disassembled {
+                is_official,
                 repr: format!("{op_name} A"),
                 addr_value_hint: None,
             },
             Implied => Disassembled {
+                is_official,
                 repr: op_name.to_string(),
                 addr_value_hint: None,
             },
@@ -688,7 +706,7 @@ impl Cpu {
         let instr = (0..instr_len)
             .map(|i| self.bus.read(self.pc + i as u16))
             .collect::<Vec<u8>>();
-        let disassembled = disassemble(self, &instr);
+        let dis = disassemble(self, &instr);
 
         let pc = self.pc;
         let instr = (0..3)
@@ -700,12 +718,8 @@ impl Cpu {
                 }
             })
             .join(" ");
-        let ext_mark = " "; // TODO: add * for extension mnemonics
-        let disassembled = format!(
-            "{} {}",
-            disassembled.repr,
-            disassembled.addr_value_hint.unwrap_or_default()
-        );
+        let ext_mark = if dis.is_official { " " } else { "*" };
+        let disassembled = format!("{} {}", dis.repr, dis.addr_value_hint.unwrap_or_default());
         let reg_a = self.reg_a;
         let reg_x = self.reg_x;
         let reg_y = self.reg_y;
@@ -1160,7 +1174,7 @@ impl Cpu {
     fn sbc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        self.adc_impl(Address::Accum, negate(value), true);
+        self.sbc_impl(Address::Accum, value, true);
     }
 
     fn sec(&mut self, _op: &'static Opcode) {
@@ -1280,18 +1294,20 @@ impl Cpu {
 
     fn dcp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        self.adc_impl(addr, negate(1), false);
+        self.sbc_impl(addr, 1, false);
     }
 
-    fn dop(&mut self, _op: &'static Opcode) {
+    fn dop(&mut self, op: &'static Opcode) {
         // Double NOP
+        // We need to advance PC even if it is NOP because there might be operands
+        let _ = self.operand_addr_next(op.mode);
     }
 
     fn isc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         self.adc_impl(addr, 1, false);
         let value = addr.read_from(self);
-        self.adc_impl(Address::Accum, negate(value), true);
+        self.sbc_impl(Address::Accum, value, true);
     }
 
     fn kil(&mut self, _op: &'static Opcode) {
@@ -1362,8 +1378,10 @@ impl Cpu {
         todo!()
     }
 
-    fn top(&mut self, _op: &'static Opcode) {
+    fn top(&mut self, op: &'static Opcode) {
         // Triple NOP
+        // We need to advance PC even if it is NOP because there might be operands
+        let _ = self.operand_addr_next(op.mode);
     }
 
     fn xaa(&mut self, _op: &'static Opcode) {
@@ -1384,14 +1402,6 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
 
         res
-    }
-
-    fn or_impl(&mut self, res_addr: Address, value: u8) {
-        let res = self.reg_a | value;
-        res_addr.write_to(self, res);
-
-        self.status.set(Status::ZERO, res == 0);
-        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
     }
 
     fn adc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
@@ -1418,6 +1428,20 @@ impl Cpu {
             i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
         );
         self.status.set(Status::NEGATIVE, res_signed < 0);
+    }
+
+    fn sbc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
+        if respect_carry {
+            // We need to add 1 to the value before negation, because:
+            // sbc(reg_a, value)
+            // = reg_a - value - (1 - carry)
+            // = reg_a - (value + 1) + carry
+            // = adc(reg_a, -(value + 1))
+            self.adc_impl(res_addr, negate(value.wrapping_add(1)), true);
+        } else {
+            // No need to worry about the carry if we are not respecting it
+            self.adc_impl(res_addr, negate(value), false);
+        }
     }
 
     fn rol_impl(&mut self, res_addr: Address, value: u8) -> u8 {
