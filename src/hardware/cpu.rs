@@ -1319,8 +1319,11 @@ impl Cpu {
         self.and_impl(addr, value);
     }
 
-    fn rra(&mut self, _op: &'static Opcode) {
-        todo!()
+    fn rra(&mut self, op: &'static Opcode) {
+        let addr = self.operand_addr_next(op.mode);
+        let value = addr.read_from(self);
+        self.ror_impl(addr, value);
+        self.adc_impl(Address::Accum, value, true);
     }
 
     fn slo(&mut self, op: &'static Opcode) {
@@ -1383,6 +1386,14 @@ impl Cpu {
         res
     }
 
+    fn or_impl(&mut self, res_addr: Address, value: u8) {
+        let res = self.reg_a | value;
+        res_addr.write_to(self, res);
+
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
+    }
+
     fn adc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
         let carry = if respect_carry && self.status.contains(Status::CARRY) {
             1
@@ -1441,7 +1452,8 @@ impl Cpu {
 }
 
 fn negate(value: u8) -> u8 {
-    (-(value as i8)) as u8
+    // Two's complement negation
+    (!value).wrapping_add(1)
 }
 
 #[cfg(test)]
