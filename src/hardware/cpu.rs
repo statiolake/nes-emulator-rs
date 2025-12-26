@@ -834,42 +834,14 @@ impl Cpu {
 
     fn adc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let reg_a = self.reg_a;
         let value = addr.read_from(self);
-        let carry = if self.status.contains(Status::CARRY) {
-            1
-        } else {
-            0
-        };
-
-        let res = reg_a.wrapping_add(value).wrapping_add(carry);
-        let res_signed = (reg_a as i8)
-            .wrapping_add(value as i8)
-            .wrapping_add(carry as i8);
-
-        let res_ext = u16::from(reg_a) + u16::from(value) + u16::from(carry);
-        let res_ext_signed = i16::from(reg_a as i8) + i16::from(value as i8) + i16::from(carry);
-
-        self.reg_a = res;
-        // In ADC, carry is set if result > 255
-        self.status.set(Status::CARRY, res_ext > u16::from(u8::MAX));
-        self.status.set(Status::ZERO, res == 0);
-        self.status.set(
-            Status::OVERFLOW,
-            i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
-        );
-        self.status.set(Status::NEGATIVE, res_signed < 0);
+        self.adc_impl(Address::Accum, value, true);
     }
 
     fn and(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let reg_a = self.reg_a;
         let value = addr.read_from(self);
-        let result = reg_a & value;
-        self.reg_a = result;
-
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.and_impl(Address::Accum, value);
     }
 
     fn asl(&mut self, op: &'static Opcode) {
@@ -1165,31 +1137,13 @@ impl Cpu {
     fn rol(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        let next_carry = value & 0b1000_0000 != 0;
-        let mut result = value << 1;
-        if self.status.contains(Status::CARRY) {
-            result |= 0b0000_0001;
-        }
-
-        addr.write_to(self, result);
-
-        self.status.set(Status::CARRY, next_carry);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.rol_impl(addr, value);
     }
 
     fn ror(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        let next_carry = value & 0b0000_0001 != 0;
-        let mut result = value >> 1;
-        if self.status.contains(Status::CARRY) {
-            result |= 0b1000_0000;
-        }
-
-        addr.write_to(self, result);
-
-        self.status.set(Status::CARRY, next_carry);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.ror_impl(addr, value);
     }
 
     fn rti(&mut self, _op: &'static Opcode) {
@@ -1206,7 +1160,7 @@ impl Cpu {
     fn sbc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        self.sbc_impl(value);
+        self.adc_impl(Address::Accum, negate(value), true);
     }
 
     fn sec(&mut self, _op: &'static Opcode) {
@@ -1289,14 +1243,10 @@ impl Cpu {
 
     fn aac(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let reg_a = self.reg_a;
         let value = addr.read_from(self);
-        let result = reg_a & value;
-        self.reg_a = result;
+        let res = self.and_impl(Address::Accum, value);
 
-        self.status.set(Status::CARRY, result & SIGN_BIT != 0);
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.status.set(Status::CARRY, res & SIGN_BIT != 0);
     }
 
     fn aax(&mut self, op: &'static Opcode) {
@@ -1330,11 +1280,7 @@ impl Cpu {
 
     fn dcp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = addr.read_from(self);
-        let result = value.wrapping_sub(1);
-        addr.write_to(self, result);
-
-        self.status.set(Status::CARRY, self.reg_a >= result);
+        self.adc_impl(addr, negate(1), false);
     }
 
     fn dop(&mut self, _op: &'static Opcode) {
@@ -1343,12 +1289,9 @@ impl Cpu {
 
     fn isc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
+        self.adc_impl(addr, 1, false);
         let value = addr.read_from(self);
-        let incremented = value.wrapping_add(1);
-        addr.write_to(self, incremented);
-
-        // then SBC
-        self.sbc_impl(incremented);
+        self.adc_impl(Address::Accum, negate(value), true);
     }
 
     fn kil(&mut self, _op: &'static Opcode) {
@@ -1372,19 +1315,8 @@ impl Cpu {
     fn rla(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        let next_carry = value & 0b0000_0001 != 0;
-        let mut result = value >> 1;
-        if self.status.contains(Status::CARRY) {
-            result |= 0b1000_0000;
-        }
-        addr.write_to(self, result);
-
-        // AND with accumulator
-        let anded = self.reg_a & result;
-
-        self.status.set(Status::CARRY, next_carry); // FIXME
-        self.status.set(Status::NEGATIVE, anded & SIGN_BIT != 0);
-        self.status.set(Status::ZERO, anded == 0);
+        self.rol_impl(addr, value);
+        self.and_impl(addr, value);
     }
 
     fn rra(&mut self, _op: &'static Opcode) {
@@ -1441,30 +1373,34 @@ impl Cpu {
 
     // impls
 
-    fn and_impl(&mut self, addr: Option<u16>) {}
+    fn and_impl(&mut self, res_addr: Address, value: u8) -> u8 {
+        let res = self.reg_a & value;
+        res_addr.write_to(self, res);
 
-    fn sbc_impl(&mut self, value: u8) {
-        let reg_a = self.reg_a;
-        let carry = if self.status.contains(Status::CARRY) {
-            0
-        } else {
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
+
+        res
+    }
+
+    fn adc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
+        let carry = if respect_carry && self.status.contains(Status::CARRY) {
             1
+        } else {
+            0
         };
 
-        let res = reg_a.wrapping_sub(value).wrapping_sub(carry);
-        let res_signed = (reg_a as i8)
-            .wrapping_sub(value as i8)
-            .wrapping_sub(carry as i8);
+        let res = self.reg_a.wrapping_add(value).wrapping_add(carry);
+        let res_signed = (self.reg_a as i8)
+            .wrapping_add(value as i8)
+            .wrapping_add(carry as i8);
 
-        let res_ext = u16::from(reg_a)
-            .wrapping_sub(u16::from(value))
-            .wrapping_sub(u16::from(carry));
-        let res_ext_signed = i16::from(reg_a as i8) - i16::from(value as i8) - i16::from(carry);
+        let res_ext = u16::from(self.reg_a) + u16::from(value) + u16::from(carry);
+        let res_ext_signed =
+            i16::from(self.reg_a as i8) + i16::from(value as i8) + i16::from(carry);
 
-        self.reg_a = res;
-        // in SBC, carry is set when no borrow is needed
-        self.status
-            .set(Status::CARRY, res_ext <= u16::from(u8::MAX));
+        res_addr.write_to(self, res);
+        self.status.set(Status::CARRY, res_ext > u16::from(u8::MAX));
         self.status.set(Status::ZERO, res == 0);
         self.status.set(
             Status::OVERFLOW,
@@ -1472,6 +1408,40 @@ impl Cpu {
         );
         self.status.set(Status::NEGATIVE, res_signed < 0);
     }
+
+    fn rol_impl(&mut self, res_addr: Address, value: u8) -> u8 {
+        let next_carry = value & 0b1000_0000 != 0;
+        let mut res = value << 1;
+        if self.status.contains(Status::CARRY) {
+            res |= 0b0000_0001;
+        }
+
+        res_addr.write_to(self, res);
+
+        self.status.set(Status::CARRY, next_carry);
+        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
+
+        res
+    }
+
+    fn ror_impl(&mut self, res_addr: Address, value: u8) -> u8 {
+        let next_carry = value & 0b0000_0001 != 0;
+        let mut res = value >> 1;
+        if self.status.contains(Status::CARRY) {
+            res |= 0b1000_0000;
+        }
+
+        res_addr.write_to(self, res);
+
+        self.status.set(Status::CARRY, next_carry);
+        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
+
+        res
+    }
+}
+
+fn negate(value: u8) -> u8 {
+    (-(value as i8)) as u8
 }
 
 #[cfg(test)]
