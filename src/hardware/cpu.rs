@@ -1264,12 +1264,13 @@ impl Cpu {
     }
 
     fn sax(&mut self, op: &'static Opcode) {
-        let result = self.reg_a & self.reg_x;
+        let res = self.reg_a & self.reg_x;
         let addr = self.operand_addr_next(op.mode);
-        addr.write_to(self, result);
+        addr.write_to(self, res);
 
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        // FIXME: According to nestest.log, this instruction does not affect any flags (really?)
+        // self.status.set(Status::ZERO, res == 0);
+        // self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
     }
 
     fn arr(&mut self, _op: &'static Opcode) {
@@ -1294,7 +1295,10 @@ impl Cpu {
 
     fn dcp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
+        let ps = self.status;
         self.sbc_impl(addr, 1, false);
+        // FOXME: Restore status because DCP does not modify flag (really?)
+        self.status = ps;
     }
 
     fn dop(&mut self, op: &'static Opcode) {
