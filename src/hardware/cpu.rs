@@ -1318,8 +1318,8 @@ impl Cpu {
     fn rra(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        self.ror_impl(addr, value);
-        self.adc_impl(Address::Accum, value, true);
+        let res = self.ror_impl(addr, value);
+        self.adc_impl(Address::Accum, res, true);
     }
 
     fn slo(&mut self, op: &'static Opcode) {
