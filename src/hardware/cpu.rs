@@ -432,18 +432,18 @@ pub const CPU_OPCODES: &[Opcode] = &[
     Opcode::new_unofficial(0xDC, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
     Opcode::new_unofficial(0xDF, "DCP", AddressingMode::AbsoluteX, 7, Cpu::dcp),
     Opcode::new_unofficial(0xE2, "NOP", AddressingMode::Immediate, 2, Cpu::dop),
-    Opcode::new_unofficial(0xE3, "ISC", AddressingMode::IndexedIndirect, 8, Cpu::isc),
-    Opcode::new_unofficial(0xE7, "ISC", AddressingMode::ZeroPage, 5, Cpu::isc),
+    Opcode::new_unofficial(0xE3, "ISB", AddressingMode::IndexedIndirect, 8, Cpu::isb),
+    Opcode::new_unofficial(0xE7, "ISB", AddressingMode::ZeroPage, 5, Cpu::isb),
     Opcode::new_unofficial(0xEB, "SBC", AddressingMode::Immediate, 2, Cpu::sbc),
-    Opcode::new_unofficial(0xEF, "ISC", AddressingMode::Absolute, 6, Cpu::isc),
+    Opcode::new_unofficial(0xEF, "ISB", AddressingMode::Absolute, 6, Cpu::isb),
     Opcode::new_unofficial(0xF2, "KIL", AddressingMode::Implied, 0, Cpu::kil),
-    Opcode::new_unofficial(0xF3, "ISC", AddressingMode::IndirectIndexed, 8, Cpu::isc),
+    Opcode::new_unofficial(0xF3, "ISB", AddressingMode::IndirectIndexed, 8, Cpu::isb),
     Opcode::new_unofficial(0xF4, "NOP", AddressingMode::ZeroPageX, 4, Cpu::dop),
-    Opcode::new_unofficial(0xF7, "ISC", AddressingMode::ZeroPageX, 6, Cpu::isc),
+    Opcode::new_unofficial(0xF7, "ISB", AddressingMode::ZeroPageX, 6, Cpu::isb),
     Opcode::new_unofficial(0xFA, "NOP", AddressingMode::Implied, 2, Cpu::nop),
-    Opcode::new_unofficial(0xFB, "ISC", AddressingMode::AbsoluteY, 7, Cpu::isc),
+    Opcode::new_unofficial(0xFB, "ISB", AddressingMode::AbsoluteY, 7, Cpu::isb),
     Opcode::new_unofficial(0xFC, "NOP", AddressingMode::AbsoluteX, 4, Cpu::top),
-    Opcode::new_unofficial(0xFF, "ISC", AddressingMode::AbsoluteX, 7, Cpu::isc),
+    Opcode::new_unofficial(0xFF, "ISB", AddressingMode::AbsoluteX, 7, Cpu::isb),
 ];
 
 pub struct Disassembled {
@@ -1295,7 +1295,7 @@ impl Cpu {
         let _ = self.operand_addr_next(op.mode);
     }
 
-    fn isc(&mut self, op: &'static Opcode) {
+    fn isb(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         self.adc_impl(addr, 1, false);
         let value = addr.read_from(self);
