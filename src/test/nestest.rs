@@ -1,4 +1,4 @@
-use itertools::{Itertools, izip};
+use itertools::Itertools;
 
 use crate::hardware::{Hardware, cpu::Status, rom::Rom};
 
@@ -26,13 +26,12 @@ fn nestest_ok() {
         .lines()
         .collect_vec();
 
-    let mut actual_log = vec![];
-    while !hw.cpu.lock().unwrap().is_halted() && actual_log.len() < correct_log.len() {
-        actual_log.push(hw.cpu.lock().unwrap().dump_state());
+    let mut line_no = 0;
+    while !hw.cpu.lock().unwrap().is_halted() && line_no < correct_log.len() {
+        let actual = hw.cpu.lock().unwrap().dump_state();
+        let expected = correct_log[line_no];
+        assert_eq!(expected, actual, "mismatch at line {}", line_no + 1);
         hw.cpu.lock().unwrap().step();
-    }
-
-    for (i, (expected, actual)) in izip!(correct_log, actual_log).enumerate() {
-        assert_eq!(expected, actual, "mismatch at line {i}",);
+        line_no += 1;
     }
 }

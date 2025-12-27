@@ -962,13 +962,7 @@ impl Cpu {
     fn cmp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-
-        self.status.set(Status::CARRY, self.reg_a >= value);
-        self.status.set(Status::ZERO, self.reg_a == value);
-        self.status.set(
-            Status::NEGATIVE,
-            (self.reg_a.wrapping_sub(value)) & SIGN_BIT != 0,
-        );
+        self.cmp_impl(Address::Accum, value);
     }
 
     fn cpx(&mut self, op: &'static Opcode) {
@@ -997,12 +991,7 @@ impl Cpu {
 
     fn dec(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = addr.read_from(self);
-        let result = value.wrapping_sub(1);
-        addr.write_to(self, result);
-
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.sbc_impl(addr, 1, false);
     }
 
     fn dex(&mut self, _op: &'static Opcode) {
@@ -1295,10 +1284,9 @@ impl Cpu {
 
     fn dcp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let ps = self.status;
         self.sbc_impl(addr, 1, false);
-        // FOXME: Restore status because DCP does not modify flag (really?)
-        self.status = ps;
+        let value = addr.read_from(self);
+        self.cmp_impl(Address::Accum, value);
     }
 
     fn dop(&mut self, op: &'static Opcode) {
@@ -1408,6 +1396,17 @@ impl Cpu {
         res
     }
 
+    fn cmp_impl(&mut self, target_addr: Address, value: u8) {
+        let target = target_addr.read_from(self);
+
+        self.status.set(Status::CARRY, target >= value);
+        self.status.set(Status::ZERO, target == value);
+        self.status.set(
+            Status::NEGATIVE,
+            (target.wrapping_sub(value)) & SIGN_BIT != 0,
+        );
+    }
+
     fn adc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
         let carry = if respect_carry && self.status.contains(Status::CARRY) {
             1
@@ -1415,23 +1414,27 @@ impl Cpu {
             0
         };
 
-        let res = self.reg_a.wrapping_add(value).wrapping_add(carry);
-        let res_signed = (self.reg_a as i8)
+        let orig_value = res_addr.read_from(self);
+        let res = orig_value.wrapping_add(value).wrapping_add(carry);
+        let res_signed = (orig_value as i8)
             .wrapping_add(value as i8)
             .wrapping_add(carry as i8);
 
-        let res_ext = u16::from(self.reg_a) + u16::from(value) + u16::from(carry);
+        let res_ext = u16::from(orig_value) + u16::from(value) + u16::from(carry);
         let res_ext_signed =
-            i16::from(self.reg_a as i8) + i16::from(value as i8) + i16::from(carry);
+            i16::from(orig_value as i8) + i16::from(value as i8) + i16::from(carry);
 
         res_addr.write_to(self, res);
-        self.status.set(Status::CARRY, res_ext > u16::from(u8::MAX));
+
         self.status.set(Status::ZERO, res == 0);
-        self.status.set(
-            Status::OVERFLOW,
-            i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
-        );
         self.status.set(Status::NEGATIVE, res_signed < 0);
+        if respect_carry {
+            self.status.set(Status::CARRY, res_ext > u16::from(u8::MAX));
+            self.status.set(
+                Status::OVERFLOW,
+                i16::from(res_signed.signum()) * res_ext_signed.signum() < 0,
+            );
+        }
     }
 
     fn sbc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
