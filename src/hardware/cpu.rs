@@ -860,15 +860,7 @@ impl Cpu {
 
     fn asl(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = addr.read_from(self);
-
-        let carry = value & 0b1000_0000 != 0;
-        let result = value.wrapping_shl(1);
-        addr.write_to(self, result);
-
-        self.status.set(Status::CARRY, carry);
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.asl_impl(addr);
     }
 
     fn bcc(&mut self, op: &'static Opcode) {
@@ -1105,11 +1097,7 @@ impl Cpu {
     fn ora(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        let result = self.reg_a | value;
-        self.reg_a = result;
-
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        self.or_impl(Address::Accum, value);
     }
 
     fn pha(&mut self, _op: &'static Opcode) {
@@ -1336,14 +1324,8 @@ impl Cpu {
 
     fn slo(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
-        let value = addr.read_from(self);
-        let carry = value & 0b1000_0000 != 0;
-        let result = value.wrapping_shl(1);
-        addr.write_to(self, result);
-
-        self.status.set(Status::CARRY, carry);
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
+        let res = self.asl_impl(addr);
+        self.or_impl(Address::Accum, res);
     }
 
     fn sre(&mut self, op: &'static Opcode) {
@@ -1396,6 +1378,16 @@ impl Cpu {
         res
     }
 
+    fn or_impl(&mut self, res_addr: Address, value: u8) -> u8 {
+        let res = self.reg_a | value;
+        res_addr.write_to(self, res);
+
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
+
+        res
+    }
+
     fn cmp_impl(&mut self, target_addr: Address, value: u8) {
         let target = target_addr.read_from(self);
 
@@ -1405,6 +1397,19 @@ impl Cpu {
             Status::NEGATIVE,
             (target.wrapping_sub(value)) & SIGN_BIT != 0,
         );
+    }
+
+    fn asl_impl(&mut self, res_addr: Address) -> u8 {
+        let value = res_addr.read_from(self);
+        let carry = value & 0b1000_0000 != 0;
+        let res = value.wrapping_shl(1);
+        res_addr.write_to(self, res);
+
+        self.status.set(Status::CARRY, carry);
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
+
+        res
     }
 
     fn adc_impl(&mut self, res_addr: Address, value: u8, respect_carry: bool) {
