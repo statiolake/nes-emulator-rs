@@ -1311,8 +1311,8 @@ impl Cpu {
     fn rla(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
-        self.rol_impl(addr, value);
-        self.and_impl(addr, value);
+        let res = self.rol_impl(addr, value);
+        self.and_impl(Address::Accum, res);
     }
 
     fn rra(&mut self, op: &'static Opcode) {
