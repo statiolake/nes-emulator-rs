@@ -138,14 +138,9 @@ pub struct Opcode {
     pub code: u8,
     pub name: &'static str,
     pub is_official: bool,
-    pub args: OpcodeArgs,
-    pub handler: fn(&mut Cpu, &'static OpcodeArgs),
-}
-
-#[derive(Debug)]
-pub struct OpcodeArgs {
     pub mode: AddressingMode,
     pub cycles: u8,
+    pub handler: fn(&mut Cpu, &'static Opcode),
 }
 
 impl Opcode {
@@ -154,13 +149,14 @@ impl Opcode {
         name: &'static str,
         mode: AddressingMode,
         cycles: u8,
-        handler: fn(&mut Cpu, &'static OpcodeArgs),
+        handler: fn(&mut Cpu, &'static Opcode),
     ) -> Self {
         Opcode {
             code,
             name,
             is_official: true,
-            args: OpcodeArgs { mode, cycles },
+            mode,
+            cycles,
             handler,
         }
     }
@@ -170,20 +166,21 @@ impl Opcode {
         name: &'static str,
         mode: AddressingMode,
         cycles: u8,
-        handler: fn(&mut Cpu, &'static OpcodeArgs),
+        handler: fn(&mut Cpu, &'static Opcode),
     ) -> Self {
         Opcode {
             code,
             name,
             is_official: false,
-            args: OpcodeArgs { mode, cycles },
+            mode,
+            cycles,
             handler,
         }
     }
 
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.args.mode.len() + 1
+        self.mode.len() + 1
     }
 }
 
@@ -477,7 +474,7 @@ pub fn disassemble(cpu: &mut Cpu, instr: &[u8]) -> Disassembled {
         let first = instr.get(1).copied();
         let second = instr.get(2).copied();
 
-        Some(match op.args.mode {
+        Some(match op.mode {
             Immediate => {
                 let first = first?;
                 Disassembled {
@@ -695,7 +692,7 @@ impl Cpu {
             return;
         };
 
-        (op.handler)(self, &op.args);
+        (op.handler)(self, op);
     }
 
     pub fn is_halted(&self) -> bool {
@@ -849,45 +846,45 @@ impl Cpu {
         }
     }
 
-    fn adc(&mut self, op: &'static OpcodeArgs) {
+    fn adc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.adc_impl(Address::Accum, value, true);
     }
 
-    fn and(&mut self, op: &'static OpcodeArgs) {
+    fn and(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.and_impl(Address::Accum, value);
     }
 
-    fn asl(&mut self, op: &'static OpcodeArgs) {
+    fn asl(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         self.asl_impl(addr);
     }
 
-    fn bcc(&mut self, op: &'static OpcodeArgs) {
+    fn bcc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::CARRY) {
             self.pc = addr;
         }
     }
 
-    fn bcs(&mut self, op: &'static OpcodeArgs) {
+    fn bcs(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::CARRY) {
             self.pc = addr;
         }
     }
 
-    fn beq(&mut self, op: &'static OpcodeArgs) {
+    fn beq(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::ZERO) {
             self.pc = addr;
         }
     }
 
-    fn bit(&mut self, op: &'static OpcodeArgs) {
+    fn bit(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         let mask = self.reg_a;
@@ -898,69 +895,69 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn bmi(&mut self, op: &'static OpcodeArgs) {
+    fn bmi(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::NEGATIVE) {
             self.pc = addr;
         }
     }
 
-    fn bne(&mut self, op: &'static OpcodeArgs) {
+    fn bne(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::ZERO) {
             self.pc = addr;
         }
     }
 
-    fn bpl(&mut self, op: &'static OpcodeArgs) {
+    fn bpl(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::NEGATIVE) {
             self.pc = addr;
         }
     }
 
-    fn brk(&mut self, _op: &'static OpcodeArgs) {
+    fn brk(&mut self, _op: &'static Opcode) {
         self.halted = true;
     }
 
-    fn bvc(&mut self, op: &'static OpcodeArgs) {
+    fn bvc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if !self.status.contains(Status::OVERFLOW) {
             self.pc = addr;
         }
     }
 
-    fn bvs(&mut self, op: &'static OpcodeArgs) {
+    fn bvs(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
         if self.status.contains(Status::OVERFLOW) {
             self.pc = addr;
         }
     }
 
-    fn clc(&mut self, _op: &'static OpcodeArgs) {
+    fn clc(&mut self, _op: &'static Opcode) {
         self.status.remove(Status::CARRY);
     }
 
-    fn cld(&mut self, _op: &'static OpcodeArgs) {
+    fn cld(&mut self, _op: &'static Opcode) {
         // Decimal mode is not supported but we can set the flag
         self.status.remove(Status::DECIMAL_MODE);
     }
 
-    fn cli(&mut self, _op: &'static OpcodeArgs) {
+    fn cli(&mut self, _op: &'static Opcode) {
         self.status.remove(Status::INTERRUPT_DISABLE);
     }
 
-    fn clv(&mut self, _op: &'static OpcodeArgs) {
+    fn clv(&mut self, _op: &'static Opcode) {
         self.status.remove(Status::OVERFLOW);
     }
 
-    fn cmp(&mut self, op: &'static OpcodeArgs) {
+    fn cmp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.cmp_impl(Address::Accum, value);
     }
 
-    fn cpx(&mut self, op: &'static OpcodeArgs) {
+    fn cpx(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
 
@@ -972,7 +969,7 @@ impl Cpu {
         );
     }
 
-    fn cpy(&mut self, op: &'static OpcodeArgs) {
+    fn cpy(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
 
@@ -984,12 +981,12 @@ impl Cpu {
         );
     }
 
-    fn dec(&mut self, op: &'static OpcodeArgs) {
+    fn dec(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         self.sbc_impl(addr, 1, false);
     }
 
-    fn dex(&mut self, _op: &'static OpcodeArgs) {
+    fn dex(&mut self, _op: &'static Opcode) {
         self.reg_x = self.reg_x.wrapping_sub(1);
 
         self.status.set(Status::ZERO, self.reg_x == 0);
@@ -997,7 +994,7 @@ impl Cpu {
             .set(Status::NEGATIVE, self.reg_x & SIGN_BIT != 0);
     }
 
-    fn dey(&mut self, _op: &'static OpcodeArgs) {
+    fn dey(&mut self, _op: &'static Opcode) {
         self.reg_y = self.reg_y.wrapping_sub(1);
 
         self.status.set(Status::ZERO, self.reg_y == 0);
@@ -1005,7 +1002,7 @@ impl Cpu {
             .set(Status::NEGATIVE, self.reg_y & SIGN_BIT != 0);
     }
 
-    fn eor(&mut self, op: &'static OpcodeArgs) {
+    fn eor(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
 
@@ -1016,7 +1013,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn inc(&mut self, _op: &'static OpcodeArgs) {
+    fn inc(&mut self, _op: &'static Opcode) {
         let addr = self.operand_addr_next(_op.mode);
         let value = addr.read_from(self);
         let result = value.wrapping_add(1);
@@ -1026,7 +1023,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn inx(&mut self, _op: &'static OpcodeArgs) {
+    fn inx(&mut self, _op: &'static Opcode) {
         self.reg_x = self.reg_x.wrapping_add(1);
 
         self.status.set(Status::ZERO, self.reg_x == 0);
@@ -1034,7 +1031,7 @@ impl Cpu {
             .set(Status::NEGATIVE, self.reg_x & SIGN_BIT != 0);
     }
 
-    fn iny(&mut self, _op: &'static OpcodeArgs) {
+    fn iny(&mut self, _op: &'static Opcode) {
         self.reg_y = self.reg_y.wrapping_add(1);
 
         self.status.set(Status::ZERO, self.reg_y == 0);
@@ -1042,12 +1039,12 @@ impl Cpu {
             .set(Status::NEGATIVE, self.reg_y & SIGN_BIT != 0);
     }
 
-    fn jmp(&mut self, _op: &'static OpcodeArgs) {
+    fn jmp(&mut self, _op: &'static Opcode) {
         let addr = self.operand_addr_next(_op.mode).expect_mem();
         self.pc = addr;
     }
 
-    fn jsr(&mut self, op: &'static OpcodeArgs) {
+    fn jsr(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode).expect_mem();
 
         self.stack_push_u16(self.pc.wrapping_sub(1));
@@ -1055,7 +1052,7 @@ impl Cpu {
         self.pc = addr;
     }
 
-    fn lda(&mut self, op: &'static OpcodeArgs) {
+    fn lda(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.reg_a = value;
@@ -1064,7 +1061,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn ldx(&mut self, op: &'static OpcodeArgs) {
+    fn ldx(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.reg_x = value;
@@ -1073,7 +1070,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn ldy(&mut self, op: &'static OpcodeArgs) {
+    fn ldy(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.reg_y = value;
@@ -1082,7 +1079,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn lsr(&mut self, op: &'static OpcodeArgs) {
+    fn lsr(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
 
@@ -1095,26 +1092,26 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn nop(&mut self, _op: &'static OpcodeArgs) {}
+    fn nop(&mut self, _op: &'static Opcode) {}
 
-    fn ora(&mut self, op: &'static OpcodeArgs) {
+    fn ora(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.or_impl(Address::Accum, value);
     }
 
-    fn pha(&mut self, _op: &'static OpcodeArgs) {
+    fn pha(&mut self, _op: &'static Opcode) {
         let value = self.reg_a;
         self.stack_push(value);
     }
 
-    fn php(&mut self, _op: &'static OpcodeArgs) {
+    fn php(&mut self, _op: &'static Opcode) {
         // Set the B flag when pushing to stack by instruction
         let value = (self.status | Status::B_FLAG).bits();
         self.stack_push(value);
     }
 
-    fn pla(&mut self, _op: &'static OpcodeArgs) {
+    fn pla(&mut self, _op: &'static Opcode) {
         let value = self.stack_pop();
         self.reg_a = value;
 
@@ -1122,70 +1119,70 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn plp(&mut self, _op: &'static OpcodeArgs) {
+    fn plp(&mut self, _op: &'static Opcode) {
         let value = self.stack_pop();
         // when pulling from stack, B flag is ignored, and RESERVED flag is always set.
         self.status = Status::from_bits_truncate(value) & !Status::B_FLAG | Status::RESERVED;
     }
 
-    fn rol(&mut self, op: &'static OpcodeArgs) {
+    fn rol(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.rol_impl(addr, value);
     }
 
-    fn ror(&mut self, op: &'static OpcodeArgs) {
+    fn ror(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.ror_impl(addr, value);
     }
 
-    fn rti(&mut self, _op: &'static OpcodeArgs) {
+    fn rti(&mut self, _op: &'static Opcode) {
         // when pulling from stack, B flag is not set and RESERVED flag is always set.
         self.status =
             Status::from_bits_truncate(self.stack_pop()) & !Status::B_FLAG | Status::RESERVED;
         self.pc = self.stack_pop_u16();
     }
 
-    fn rts(&mut self, _op: &'static OpcodeArgs) {
+    fn rts(&mut self, _op: &'static Opcode) {
         self.pc = self.stack_pop_u16().wrapping_add(1);
     }
 
-    fn sbc(&mut self, op: &'static OpcodeArgs) {
+    fn sbc(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.sbc_impl(Address::Accum, value, true);
     }
 
-    fn sec(&mut self, _op: &'static OpcodeArgs) {
+    fn sec(&mut self, _op: &'static Opcode) {
         self.status.insert(Status::CARRY);
     }
 
-    fn sed(&mut self, _op: &'static OpcodeArgs) {
+    fn sed(&mut self, _op: &'static Opcode) {
         // Decimal mode is not supported but we can set the flag
         self.status.insert(Status::DECIMAL_MODE);
     }
 
-    fn sei(&mut self, _op: &'static OpcodeArgs) {
+    fn sei(&mut self, _op: &'static Opcode) {
         self.status.insert(Status::INTERRUPT_DISABLE);
     }
 
-    fn sta(&mut self, op: &'static OpcodeArgs) {
+    fn sta(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         addr.write_to(self, self.reg_a);
     }
 
-    fn stx(&mut self, _op: &'static OpcodeArgs) {
+    fn stx(&mut self, _op: &'static Opcode) {
         let addr = self.operand_addr_next(_op.mode);
         addr.write_to(self, self.reg_x);
     }
 
-    fn sty(&mut self, _op: &'static OpcodeArgs) {
+    fn sty(&mut self, _op: &'static Opcode) {
         let addr = self.operand_addr_next(_op.mode);
         addr.write_to(self, self.reg_y);
     }
 
-    fn tax(&mut self, _op: &'static OpcodeArgs) {
+    fn tax(&mut self, _op: &'static Opcode) {
         let result = self.reg_a;
         self.reg_x = result;
 
@@ -1193,7 +1190,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn tay(&mut self, _op: &'static OpcodeArgs) {
+    fn tay(&mut self, _op: &'static Opcode) {
         let result = self.reg_a;
         self.reg_y = result;
 
@@ -1201,7 +1198,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn tsx(&mut self, _op: &'static OpcodeArgs) {
+    fn tsx(&mut self, _op: &'static Opcode) {
         let result = self.sp;
         self.reg_x = result;
 
@@ -1209,7 +1206,7 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn txa(&mut self, _op: &'static OpcodeArgs) {
+    fn txa(&mut self, _op: &'static Opcode) {
         let result = self.reg_x;
         self.reg_a = result;
 
@@ -1217,11 +1214,11 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn txs(&mut self, _op: &'static OpcodeArgs) {
+    fn txs(&mut self, _op: &'static Opcode) {
         self.sp = self.reg_x;
     }
 
-    fn tya(&mut self, _op: &'static OpcodeArgs) {
+    fn tya(&mut self, _op: &'static Opcode) {
         let result = self.reg_y;
         self.reg_a = result;
 
@@ -1229,13 +1226,13 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, result & SIGN_BIT != 0);
     }
 
-    fn ivd(&mut self, _op: &'static OpcodeArgs) {
+    fn ivd(&mut self, _op: &'static Opcode) {
         panic!("Invalid opcode encountered");
     }
 
     // unofficial opcodes
 
-    fn aac(&mut self, op: &'static OpcodeArgs) {
+    fn aac(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         let res = self.and_impl(Address::Accum, value);
@@ -1243,7 +1240,7 @@ impl Cpu {
         self.status.set(Status::CARRY, res & SIGN_BIT != 0);
     }
 
-    fn sax(&mut self, op: &'static OpcodeArgs) {
+    fn sax(&mut self, op: &'static Opcode) {
         let res = self.reg_a & self.reg_x;
         let addr = self.operand_addr_next(op.mode);
         addr.write_to(self, res);
@@ -1253,55 +1250,55 @@ impl Cpu {
         // self.status.set(Status::NEGATIVE, res & SIGN_BIT != 0);
     }
 
-    fn arr(&mut self, _op: &'static OpcodeArgs) {
+    fn arr(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn asr(&mut self, _op: &'static OpcodeArgs) {
+    fn asr(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn atx(&mut self, _op: &'static OpcodeArgs) {
+    fn atx(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn axa(&mut self, _op: &'static OpcodeArgs) {
+    fn axa(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn axs(&mut self, _op: &'static OpcodeArgs) {
+    fn axs(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn dcp(&mut self, op: &'static OpcodeArgs) {
+    fn dcp(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         self.sbc_impl(addr, 1, false);
         let value = addr.read_from(self);
         self.cmp_impl(Address::Accum, value);
     }
 
-    fn dop(&mut self, op: &'static OpcodeArgs) {
+    fn dop(&mut self, op: &'static Opcode) {
         // Double NOP
         // We need to advance PC even if it is NOP because there might be operands
         let _ = self.operand_addr_next(op.mode);
     }
 
-    fn isb(&mut self, op: &'static OpcodeArgs) {
+    fn isb(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         self.adc_impl(addr, 1, false);
         let value = addr.read_from(self);
         self.sbc_impl(Address::Accum, value, true);
     }
 
-    fn kil(&mut self, _op: &'static OpcodeArgs) {
+    fn kil(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn lar(&mut self, _op: &'static OpcodeArgs) {
+    fn lar(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn lax(&mut self, op: &'static OpcodeArgs) {
+    fn lax(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         self.reg_a = value;
@@ -1311,27 +1308,27 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, value & SIGN_BIT != 0);
     }
 
-    fn rla(&mut self, op: &'static OpcodeArgs) {
+    fn rla(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         let res = self.rol_impl(addr, value);
         self.and_impl(Address::Accum, res);
     }
 
-    fn rra(&mut self, op: &'static OpcodeArgs) {
+    fn rra(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         let res = self.ror_impl(addr, value);
         self.adc_impl(Address::Accum, res, true);
     }
 
-    fn slo(&mut self, op: &'static OpcodeArgs) {
+    fn slo(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let res = self.asl_impl(addr);
         self.or_impl(Address::Accum, res);
     }
 
-    fn sre(&mut self, op: &'static OpcodeArgs) {
+    fn sre(&mut self, op: &'static Opcode) {
         let addr = self.operand_addr_next(op.mode);
         let value = addr.read_from(self);
         let carry = value & 0b0000_0001 != 0;
@@ -1347,25 +1344,25 @@ impl Cpu {
         self.status.set(Status::NEGATIVE, xored & SIGN_BIT != 0);
     }
 
-    fn sxa(&mut self, _op: &'static OpcodeArgs) {
+    fn sxa(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn sya(&mut self, _op: &'static OpcodeArgs) {
+    fn sya(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn top(&mut self, op: &'static OpcodeArgs) {
+    fn top(&mut self, op: &'static Opcode) {
         // Triple NOP
         // We need to advance PC even if it is NOP because there might be operands
         let _ = self.operand_addr_next(op.mode);
     }
 
-    fn xaa(&mut self, _op: &'static OpcodeArgs) {
+    fn xaa(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
-    fn xas(&mut self, _op: &'static OpcodeArgs) {
+    fn xas(&mut self, _op: &'static Opcode) {
         todo!()
     }
 
