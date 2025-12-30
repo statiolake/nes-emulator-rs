@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::bail;
 use log::warn;
 
@@ -7,7 +9,7 @@ pub struct Rom {
     prg_rom_size: PrgRomSize,
     prg_rom_data: Vec<u8>,
     _chr_rom_size: ChrRomSize,
-    _chr_rom_data: Vec<u8>,
+    chr_rom_data: Vec<u8>,
     mapper: Mapper,
     _screen_mirroring: ScreenMirroring,
 }
@@ -24,10 +26,18 @@ impl Rom {
             prg_rom_size,
             prg_rom_data,
             _chr_rom_size: chr_rom_size,
-            _chr_rom_data: chr_rom_data,
+            chr_rom_data,
             mapper,
             _screen_mirroring: mirroring,
         })
+    }
+
+    pub fn as_prg_peri(this: Arc<Mutex<Self>>) -> PrgRomPeripheral {
+        PrgRomPeripheral { rom: this }
+    }
+
+    pub fn as_chr_peri(this: Arc<Mutex<Self>>) -> ChrRomPeripheral {
+        ChrRomPeripheral { rom: this }
     }
 }
 
@@ -144,13 +154,34 @@ fn parse_prg_chr_rom(raw: &[u8]) -> anyhow::Result<(PrgRomSize, Vec<u8>, ChrRomS
     ))
 }
 
-impl Peripheral for Rom {
+pub struct PrgRomPeripheral {
+    rom: Arc<Mutex<Rom>>,
+}
+
+pub struct ChrRomPeripheral {
+    rom: Arc<Mutex<Rom>>,
+}
+
+impl Peripheral for PrgRomPeripheral {
     fn read(&mut self, address: u16) -> u8 {
-        // CPU can access PRG ROM only - No need to consider CHR ROM.
-        let address = match self.mapper {
-            Mapper::None => address & self.prg_rom_size.mirror_mask(),
+        let rom = self.rom.lock().unwrap();
+        let address = match rom.mapper {
+            Mapper::None => address & rom.prg_rom_size.mirror_mask(),
         };
-        self.prg_rom_data[address as usize]
+        rom.prg_rom_data[address as usize]
+    }
+
+    fn write(&mut self, _address: u16, _value: u8) {
+        // ROM is read-only; writes are ignored.
+        warn!("Attempted to write to ROM, which is read-only.");
+    }
+}
+
+impl Peripheral for ChrRomPeripheral {
+    fn read(&mut self, address: u16) -> u8 {
+        let rom = self.rom.lock().unwrap();
+        // FIXME: Is PPU address never mirrored?
+        rom.chr_rom_data[address as usize]
     }
 
     fn write(&mut self, _address: u16, _value: u8) {
@@ -177,7 +208,7 @@ mod tests {
         assert_eq!(rom._chr_rom_size, ChrRomSize { size_kb: 8 });
         assert_eq!(
             &binary[(16 + 16384)..(16 + 16384 + 8192)],
-            rom._chr_rom_data.as_slice()
+            rom.chr_rom_data.as_slice()
         );
 
         // Check entry point

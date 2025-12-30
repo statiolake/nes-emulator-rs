@@ -1,12 +1,14 @@
 use crate::hardware::bus::Peripheral;
 
 pub struct Ram {
-    data: [u8; 2048],
+    data: Vec<u8>,
 }
 
 impl Ram {
-    pub fn new() -> Self {
-        Ram { data: [0; 2048] }
+    pub fn new(size: usize) -> Self {
+        Ram {
+            data: vec![0; size],
+        }
     }
 
     pub fn load(&mut self, start_address: u16, program: &[u8]) {
@@ -42,11 +44,5 @@ impl Peripheral for Ram {
 
     fn write(&mut self, address: u16, value: u8) {
         self.write(address, value);
-    }
-}
-
-impl Default for Ram {
-    fn default() -> Self {
-        Self::new()
     }
 }

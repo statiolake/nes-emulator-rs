@@ -39,14 +39,14 @@ impl Connection for RangeInclusive<u16> {
 
 pub struct MirroredRange {
     pub base_range: RangeInclusive<u16>,
-    pub mirror_mask: u16,
+    pub target_mirror_mask: u16,
 }
 
 impl MirroredRange {
-    pub fn new(base_range: RangeInclusive<u16>, mirror_mask: u16) -> Self {
+    pub fn new(base_range: RangeInclusive<u16>, target_mirror_mask: u16) -> Self {
         MirroredRange {
             base_range,
-            mirror_mask,
+            target_mirror_mask,
         }
     }
 }
@@ -57,7 +57,27 @@ impl Connection for MirroredRange {
     }
 
     fn to_device_addr(&self, bus_addr: u16) -> u16 {
-        bus_addr & self.mirror_mask
+        (bus_addr - self.base_range.start()) & self.target_mirror_mask
+    }
+}
+
+pub struct IdentityRange {
+    pub range: RangeInclusive<u16>,
+}
+
+impl IdentityRange {
+    pub fn new(range: RangeInclusive<u16>) -> Self {
+        IdentityRange { range }
+    }
+}
+
+impl Connection for IdentityRange {
+    fn bus_addr_range(&self) -> RangeInclusive<u16> {
+        *self.range.start()..=*self.range.end()
+    }
+
+    fn to_device_addr(&self, bus_addr: u16) -> u16 {
+        bus_addr
     }
 }
 

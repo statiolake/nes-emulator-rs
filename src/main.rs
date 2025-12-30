@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
 
     while !hw.cpu.lock().unwrap().is_halted() {
         println!("{}", hw.cpu.lock().unwrap().dump_state());
-        hw.cpu.lock().unwrap().step();
+        hw.tick();
     }
 
     Ok(())
