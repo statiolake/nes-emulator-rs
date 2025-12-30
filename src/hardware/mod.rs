@@ -40,22 +40,11 @@ impl Hardware {
             Arc::clone(&ppu_palette_ram),
         );
         let cpu = Self::assemble_cpu(Arc::clone(&cpu_ram), Arc::clone(&rom), Arc::clone(&ppu));
-
-        {
-            let mut clock = clock.lock().unwrap();
-
-            let cpu = Arc::clone(&cpu);
-            clock.register_callback(move || {
-                // TODO: compute cycles
-                cpu.lock().unwrap().step();
-            });
-
-            let ppu = Arc::clone(&ppu);
-            clock.register_callback(move || {
-                // TODO: compute cycles
-                ppu.lock().unwrap().step();
-            });
-        }
+        Self::register_clock_callbacks(
+            &mut clock.lock().unwrap(),
+            Arc::clone(&cpu),
+            Arc::clone(&ppu),
+        );
 
         Hardware {
             clock,
@@ -94,6 +83,20 @@ impl Hardware {
         cpu_bus.connect(0x8000..=0xffff, Rom::as_prg_peri(rom));
 
         Arc::new(Mutex::new(Cpu::new(cpu_bus)))
+    }
+
+    fn register_clock_callbacks(clock: &mut Clock, cpu: Arc<Mutex<Cpu>>, ppu: Arc<Mutex<Ppu>>) {
+        let cpu = Arc::clone(&cpu);
+        clock.register_callback(move || {
+            // TODO: compute cycles
+            cpu.lock().unwrap().step();
+        });
+
+        let ppu = Arc::clone(&ppu);
+        clock.register_callback(move || {
+            // TODO: compute cycles
+            ppu.lock().unwrap().step();
+        });
     }
 
     pub fn power_on(&self) {
