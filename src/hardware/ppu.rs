@@ -14,13 +14,13 @@ pub struct Ppu {
     vblank_start_callbacks: Vec<Box<dyn FnMut() + Send + Sync>>,
 
     /// $2000
-    controller: Controller,
+    control: Control,
 
     /// $2001
     mask: u8,
 
     /// $2002
-    status: u8,
+    status: Status,
 
     /// $2003
     oam_address: u8,
@@ -46,10 +46,12 @@ pub struct Ppu {
 impl Ppu {
     pub fn new(bus: Bus) -> Self {
         Ppu {
+            ticks_to_wait: 0,
             bus,
-            controller: Controller::empty(),
+            vblank_start_callbacks: vec![],
+            control: Control::empty(),
             mask: 0,
-            status: 0,
+            status: Status::empty(),
             oam_address: 0,
             oam_data: 0,
             scroll: 0,
@@ -94,7 +96,7 @@ impl Peripheral for Ppu {
         }
 
         match (address - 0x2000) % 8 {
-            0x2 => self.status,
+            0x2 => self.status.bits(),
             0x3 => self.oam_address,
             0x4 => self.oam_data,
             0x6 => (self.address.get() & 0x00ff) as u8, // Return low byte of address
@@ -105,7 +107,7 @@ impl Peripheral for Ppu {
                 self.data_buf = self.bus.read(self.address.get());
                 // Finally, it increments the address
                 self.address
-                    .increment(self.controller.contains(Controller::VRAM_ADDRESS_INC));
+                    .increment(self.control.contains(Control::VRAM_ADDRESS_INC));
 
                 res
             }
@@ -127,7 +129,17 @@ impl Peripheral for Ppu {
         }
 
         match (address - 0x2000) % 8 {
-            0x0 => self.controller = Controller::from_bits_truncate(value),
+            0x0 => {
+                let old_control = self.control;
+                self.control = Control::from_bits_truncate(value);
+                // If PPU is VBLANK and NMI generation is just enabled, trigger NMI
+                if self.status.contains(Status::VBLANK)
+                    && !old_control.contains(Control::GENERATE_NMI)
+                    && self.control.contains(Control::GENERATE_NMI)
+                {
+                    self.trigger_vblank_start();
+                }
+            }
             0x1 => self.mask = value,
             0x3 => self.oam_address = value,
             0x4 => self.oam_data = value,
@@ -146,7 +158,7 @@ impl Peripheral for Ppu {
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-    pub struct Controller : u8 {
+    pub struct Control : u8 {
         const NAMETABLE_X = 0b0000_0001;
         const NAMETABLE_Y = 0b0000_0010;
         const VRAM_ADDRESS_INC = 0b0000_0100;
@@ -155,6 +167,15 @@ bitflags::bitflags! {
         const SPRITE_SIZE = 0b0010_0000;
         const MASTER_SLAVE = 0b0100_0000;
         const GENERATE_NMI = 0b1000_0000;
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+    pub struct Status : u8 {
+        const SPRITE_OVERFLOW = 0b0010_0000;
+        const SPRITE_ZERO_HIT = 0b0100_0000;
+        const VBLANK = 0b1000_0000;
     }
 }
 

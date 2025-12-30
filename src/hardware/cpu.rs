@@ -36,6 +36,7 @@ impl Cpu {
             op_table,
 
             halted: false,
+            ticks_to_wait: 0,
 
             reg_a: 0,
             reg_x: 0,
@@ -59,7 +60,15 @@ impl Cpu {
     }
 
     pub fn interrupt_nmi(&mut self) {
-        todo!()
+        self.stack_push_u16(self.pc);
+
+        // Remove B flag when pushing to stack by interrupt
+        self.stack_push((self.status & !Status::B_FLAG).bits());
+        self.status.insert(Status::INTERRUPT_DISABLE);
+
+        // NMI takes 2 extra CPU cycles
+        self.ticks_to_wait += 2 * CPU_CLOCK_MUL;
+        self.pc = self.bus.read_u16(0xfffa);
     }
 
     pub fn run(&mut self) {
