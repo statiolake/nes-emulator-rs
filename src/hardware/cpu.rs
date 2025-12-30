@@ -5,10 +5,14 @@ use log::warn;
 
 use crate::hardware::bus::Bus;
 
+/// CPU clock multiplier compared to master clock
+const CPU_CLOCK_MUL: usize = 12;
+
 pub struct Cpu {
     pub op_table: Vec<Option<&'static Opcode>>,
 
-    pub halted: bool,
+    halted: bool,
+    ticks_to_wait: usize,
 
     pub reg_a: u8,
     pub reg_x: u8,
@@ -44,7 +48,7 @@ impl Cpu {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub fn interrupt_reset(&mut self) {
         self.halted = false;
         self.reg_a = 0;
         self.reg_x = 0;
@@ -54,10 +58,23 @@ impl Cpu {
         self.sp = 0xff;
     }
 
+    pub fn interrupt_nmi(&mut self) {
+        todo!()
+    }
+
     pub fn run(&mut self) {
         while !self.is_halted() {
             self.step();
         }
+    }
+
+    pub fn tick(&mut self) {
+        if self.ticks_to_wait != 0 {
+            self.ticks_to_wait -= 1;
+            return;
+        }
+
+        self.step();
     }
 
     pub fn step(&mut self) {
@@ -69,6 +86,7 @@ impl Cpu {
             return;
         };
 
+        self.ticks_to_wait = op.cycles as usize * CPU_CLOCK_MUL - 1;
         (op.handler)(self, op);
     }
 
@@ -1522,7 +1540,7 @@ mod test {
     fn test_0xa9_lda_immediate_load_data() {
         let bus = create_bus(&[0xa9, 0x05, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x05);
@@ -1534,7 +1552,7 @@ mod test {
     fn test_0xa9_lda_zero_flag() {
         let bus = create_bus(&[0xa9, 0x00, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert!(cpu.status.contains(Status::ZERO));
@@ -1544,7 +1562,7 @@ mod test {
     fn test_0xaa_tax_move_a_to_x() {
         let bus = create_bus(&[0xaa, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 10;
         cpu.run();
 
@@ -1555,7 +1573,7 @@ mod test {
     fn test_5_ops_working_together() {
         let bus = create_bus(&[0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xc0;
         cpu.run();
 
@@ -1566,7 +1584,7 @@ mod test {
     fn test_inx_overflow() {
         let bus = create_bus(&[0xe8, 0xe8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0xff;
         cpu.run();
 
@@ -1578,7 +1596,7 @@ mod test {
         let bus = create_bus(&[0xa5, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x55);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x55);
@@ -1590,7 +1608,7 @@ mod test {
     fn test_0x69_adc_immediate() {
         let bus = create_bus(&[0x69, 0x50, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x30;
         cpu.run();
 
@@ -1601,7 +1619,7 @@ mod test {
     fn test_0x69_adc_immediate_with_zero_result() {
         let bus = create_bus(&[0x69, 0x00, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x00;
         cpu.run();
 
@@ -1613,7 +1631,7 @@ mod test {
         let bus = create_bus(&[0x65, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x25);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x25;
         cpu.run();
 
@@ -1625,7 +1643,7 @@ mod test {
         let bus = create_bus(&[0x6d, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x40);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x10;
         cpu.run();
 
@@ -1638,7 +1656,7 @@ mod test {
         // 0xFF (255) + 0x02 (2) = 0x101 (257 unsigned) -> Carry set, result 0x01
         let bus = create_bus(&[0x69, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xff;
         cpu.run();
 
@@ -1652,7 +1670,7 @@ mod test {
         // 0x50 (80) + 0x50 (80) = 0xA0 (160) -> No carry
         let bus = create_bus(&[0x69, 0x50, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
 
@@ -1666,7 +1684,7 @@ mod test {
         // 0x50 (80 as i8) + 0x40 (64 as i8) = 0x90 (-112 as i8) -> Overflow
         let bus = create_bus(&[0x69, 0x40, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
 
@@ -1680,7 +1698,7 @@ mod test {
         // 0xB0 (-80 as i8) + 0xC0 (-64 as i8) = 0x70 (112 as i8) -> Overflow
         let bus = create_bus(&[0x69, 0xc0, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xb0;
         cpu.run();
 
@@ -1694,7 +1712,7 @@ mod test {
         // 0x50 (80 as i8) + 0xD0 (-48 as i8) = 0x20 (32 as i8)
         let bus = create_bus(&[0x69, 0xd0, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
 
@@ -1708,7 +1726,7 @@ mod test {
         // 0x30 (48 as i8) + 0x20 (32 as i8) = 0x50 (80 as i8) - both positive, stays positive
         let bus = create_bus(&[0x69, 0x20, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x30;
         cpu.run();
 
@@ -1722,7 +1740,7 @@ mod test {
     fn test_0x29_and_immediate() {
         let bus = create_bus(&[0x29, 0x0f, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xf0;
         cpu.run();
 
@@ -1735,7 +1753,7 @@ mod test {
         let bus = create_bus(&[0x25, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x0f);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xf5;
         cpu.run();
 
@@ -1747,7 +1765,7 @@ mod test {
         let bus = create_bus(&[0x2d, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0xff);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x55;
         cpu.run();
 
@@ -1760,7 +1778,7 @@ mod test {
     fn test_0x0a_asl_accumulator() {
         let bus = create_bus(&[0x0a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x02;
         cpu.run();
 
@@ -1772,7 +1790,7 @@ mod test {
         let bus = create_bus(&[0x06, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x40);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x10), 0x80);
@@ -1783,7 +1801,7 @@ mod test {
         let bus = create_bus(&[0x0e, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x01);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x8020), 0x02);
@@ -1796,7 +1814,7 @@ mod test {
     fn test_0xf0_beq_branch_taken() {
         let bus = create_bus(&[0xf0, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::ZERO);
         cpu.run();
 
@@ -1807,7 +1825,7 @@ mod test {
     fn test_0xf0_beq_branch_not_taken() {
         let bus = create_bus(&[0xf0, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
 
@@ -1819,7 +1837,7 @@ mod test {
     fn test_0xd0_bne_branch_taken() {
         let bus = create_bus(&[0xd0, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
 
@@ -1830,7 +1848,7 @@ mod test {
     fn test_0xd0_bne_branch_not_taken() {
         let bus = create_bus(&[0xd0, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::ZERO);
         cpu.run();
 
@@ -1842,7 +1860,7 @@ mod test {
     fn test_0x90_bcc_branch_taken() {
         let bus = create_bus(&[0x90, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
 
@@ -1853,7 +1871,7 @@ mod test {
     fn test_0x90_bcc_branch_not_taken() {
         let bus = create_bus(&[0x90, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::CARRY);
         cpu.run();
 
@@ -1865,7 +1883,7 @@ mod test {
     fn test_0xb0_bcs_branch_taken() {
         let bus = create_bus(&[0xb0, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::CARRY);
         cpu.run();
 
@@ -1876,7 +1894,7 @@ mod test {
     fn test_0xb0_bcs_branch_not_taken() {
         let bus = create_bus(&[0xb0, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
     }
@@ -1886,7 +1904,7 @@ mod test {
     fn test_0x30_bmi_branch_taken() {
         let bus = create_bus(&[0x30, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::NEGATIVE);
         cpu.run();
 
@@ -1897,7 +1915,7 @@ mod test {
     fn test_0x30_bmi_branch_not_taken() {
         let bus = create_bus(&[0x30, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
     }
@@ -1907,7 +1925,7 @@ mod test {
     fn test_0x10_bpl_branch_taken() {
         let bus = create_bus(&[0x10, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
 
@@ -1918,7 +1936,7 @@ mod test {
     fn test_0x10_bpl_branch_not_taken() {
         let bus = create_bus(&[0x10, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::NEGATIVE);
         cpu.run();
 
@@ -1930,7 +1948,7 @@ mod test {
     fn test_0x50_bvc_branch_taken() {
         let bus = create_bus(&[0x50, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
 
@@ -1941,7 +1959,7 @@ mod test {
     fn test_0x50_bvc_branch_not_taken() {
         let bus = create_bus(&[0x50, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::OVERFLOW);
         cpu.run();
 
@@ -1953,7 +1971,7 @@ mod test {
     fn test_0x70_bvs_branch_taken() {
         let bus = create_bus(&[0x70, 0x02, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status.insert(Status::OVERFLOW);
         cpu.run();
 
@@ -1964,7 +1982,7 @@ mod test {
     fn test_0x70_bvs_branch_not_taken() {
         let bus = create_bus(&[0x70, 0x02, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::empty();
         cpu.run();
     }
@@ -1976,7 +1994,7 @@ mod test {
         let bus = create_bus(&[0x24, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0xc0);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x3f;
         cpu.run();
 
@@ -1989,7 +2007,7 @@ mod test {
         let bus = create_bus(&[0x2c, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x80);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x01;
         cpu.run();
 
@@ -2003,7 +2021,7 @@ mod test {
     fn test_0x00_brk() {
         let bus = create_bus(&[0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2013,7 +2031,7 @@ mod test {
     fn test_0xc9_cmp_immediate_equal() {
         let bus = create_bus(&[0xc9, 0x50, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
 
@@ -2027,7 +2045,7 @@ mod test {
         let bus = create_bus(&[0xc5, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x30);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x40;
         cpu.run();
     }
@@ -2037,7 +2055,7 @@ mod test {
         let bus = create_bus(&[0xcd, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x80);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x80;
         cpu.run();
 
@@ -2050,7 +2068,7 @@ mod test {
     fn test_0xe0_cpx_immediate_equal() {
         let bus = create_bus(&[0xe0, 0x40, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x40;
         cpu.run();
 
@@ -2062,7 +2080,7 @@ mod test {
         let bus = create_bus(&[0xe4, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x50);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x50;
         cpu.run();
 
@@ -2074,7 +2092,7 @@ mod test {
         let bus = create_bus(&[0xec, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x60);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x60;
         cpu.run();
 
@@ -2087,7 +2105,7 @@ mod test {
     fn test_0xc0_cpy_immediate_equal() {
         let bus = create_bus(&[0xc0, 0x30, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x30;
         cpu.run();
 
@@ -2099,7 +2117,7 @@ mod test {
         let bus = create_bus(&[0xc4, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x70);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x70;
         cpu.run();
 
@@ -2111,7 +2129,7 @@ mod test {
         let bus = create_bus(&[0xcc, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x90);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x90;
         cpu.run();
 
@@ -2125,7 +2143,7 @@ mod test {
         let bus = create_bus(&[0xc6, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x10);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x10), 0x0f);
@@ -2136,7 +2154,7 @@ mod test {
         let bus = create_bus(&[0xce, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x01);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x8020), 0x00);
@@ -2148,7 +2166,7 @@ mod test {
         let bus = create_bus(&[0xc6, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x00);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x10), 0xff);
@@ -2161,7 +2179,7 @@ mod test {
     fn test_0xca_dex() {
         let bus = create_bus(&[0xca, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x10;
         cpu.run();
 
@@ -2172,7 +2190,7 @@ mod test {
     fn test_0xca_dex_underflow() {
         let bus = create_bus(&[0xca, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x00;
         cpu.run();
 
@@ -2186,7 +2204,7 @@ mod test {
     fn test_0x88_dey() {
         let bus = create_bus(&[0x88, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x20;
         cpu.run();
 
@@ -2197,7 +2215,7 @@ mod test {
     fn test_0x88_dey_underflow() {
         let bus = create_bus(&[0x88, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x00;
         cpu.run();
 
@@ -2211,7 +2229,7 @@ mod test {
     fn test_0x49_eor_immediate() {
         let bus = create_bus(&[0x49, 0x0f, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xf0;
         cpu.run();
 
@@ -2223,7 +2241,7 @@ mod test {
         let bus = create_bus(&[0x45, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x55);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xaa;
         cpu.run();
 
@@ -2235,7 +2253,7 @@ mod test {
         let bus = create_bus(&[0x4d, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0xff);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x00;
         cpu.run();
 
@@ -2249,7 +2267,7 @@ mod test {
         let bus = create_bus(&[0xe6, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x0f);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x10), 0x10);
@@ -2260,7 +2278,7 @@ mod test {
         let bus = create_bus(&[0xee, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0xff);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x8020), 0x00);
@@ -2272,7 +2290,7 @@ mod test {
         let bus = create_bus(&[0xe6, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x7f);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x10), 0x80);
@@ -2285,7 +2303,7 @@ mod test {
     fn test_0xe8_inx() {
         let bus = create_bus(&[0xe8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x20;
         cpu.run();
 
@@ -2296,7 +2314,7 @@ mod test {
     fn test_0xe8_inx_to_negative() {
         let bus = create_bus(&[0xe8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x7f;
         cpu.run();
 
@@ -2310,7 +2328,7 @@ mod test {
     fn test_0xc8_iny() {
         let bus = create_bus(&[0xc8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x30;
         cpu.run();
 
@@ -2321,7 +2339,7 @@ mod test {
     fn test_0xc8_iny_to_negative() {
         let bus = create_bus(&[0xc8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x7f;
         cpu.run();
 
@@ -2336,7 +2354,7 @@ mod test {
         let bus = create_bus(&[0x4c, 0x20, 0x80, 0xff]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x00);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2345,7 +2363,7 @@ mod test {
         let bus = create_bus(&[0x6c, 0x10, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write_u16(0x10, 0x8002);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2355,7 +2373,7 @@ mod test {
     fn test_0x20_jsr() {
         let bus = create_bus(&[0x20, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         // return_addr should be the last byte of the JSR instruction
@@ -2370,7 +2388,7 @@ mod test {
         let bus = create_bus(&[0xa5, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x42);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x42);
@@ -2381,7 +2399,7 @@ mod test {
         let bus = create_bus(&[0xad, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x55);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_a, 0x55);
@@ -2392,7 +2410,7 @@ mod test {
         let bus = create_bus(&[0xb5, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x15, 0x77);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x05;
         cpu.run();
 
@@ -2404,7 +2422,7 @@ mod test {
         let bus = create_bus(&[0xbd, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8025, 0xaa);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x05;
         cpu.run();
 
@@ -2416,7 +2434,7 @@ mod test {
         let bus = create_bus(&[0xb9, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8030, 0xbb);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x10;
         cpu.run();
 
@@ -2429,7 +2447,7 @@ mod test {
     fn test_0xa2_ldx_immediate() {
         let bus = create_bus(&[0xa2, 0x44, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_x, 0x44);
@@ -2440,7 +2458,7 @@ mod test {
         let bus = create_bus(&[0xa6, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x66);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_x, 0x66);
@@ -2451,7 +2469,7 @@ mod test {
         let bus = create_bus(&[0xae, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x88);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_x, 0x88);
@@ -2462,7 +2480,7 @@ mod test {
         let bus = create_bus(&[0xb6, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x15, 0xcc);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x05;
         cpu.run();
 
@@ -2474,7 +2492,7 @@ mod test {
         let bus = create_bus(&[0xbe, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8025, 0xdd);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x05;
         cpu.run();
 
@@ -2487,7 +2505,7 @@ mod test {
     fn test_0xa0_ldy_immediate() {
         let bus = create_bus(&[0xa0, 0x33, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_y, 0x33);
@@ -2498,7 +2516,7 @@ mod test {
         let bus = create_bus(&[0xa4, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x55);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_y, 0x55);
@@ -2509,7 +2527,7 @@ mod test {
         let bus = create_bus(&[0xac, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x77);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.reg_y, 0x77);
@@ -2520,7 +2538,7 @@ mod test {
         let bus = create_bus(&[0xb4, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x15, 0x99);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x05;
         cpu.run();
 
@@ -2532,7 +2550,7 @@ mod test {
         let bus = create_bus(&[0xbc, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8030, 0xee);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x10;
         cpu.run();
 
@@ -2545,7 +2563,7 @@ mod test {
     fn test_0x4a_lsr_accumulator() {
         let bus = create_bus(&[0x4a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x04;
         cpu.run();
 
@@ -2557,7 +2575,7 @@ mod test {
         let bus = create_bus(&[0x46, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x80);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x10), 0x40);
@@ -2568,7 +2586,7 @@ mod test {
         let bus = create_bus(&[0x4e, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x02);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
 
         assert_eq!(cpu.bus.read(0x8020), 0x01);
@@ -2580,7 +2598,7 @@ mod test {
     fn test_0xea_nop() {
         let bus = create_bus(&[0xea, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         let reg_a_before = cpu.reg_a;
         cpu.run();
 
@@ -2593,7 +2611,7 @@ mod test {
     fn test_0x09_ora_immediate() {
         let bus = create_bus(&[0x09, 0x0f, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xf0;
         cpu.run();
 
@@ -2605,7 +2623,7 @@ mod test {
         let bus = create_bus(&[0x05, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x0f);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xf0;
         cpu.run();
 
@@ -2617,7 +2635,7 @@ mod test {
         let bus = create_bus(&[0x0d, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x55);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xaa;
         cpu.run();
 
@@ -2630,7 +2648,7 @@ mod test {
     fn test_0x48_pha() {
         let bus = create_bus(&[0x48, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x42;
         cpu.run();
     }
@@ -2641,7 +2659,7 @@ mod test {
     fn test_0x08_php() {
         let bus = create_bus(&[0x08, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.status = Status::ZERO | Status::NEGATIVE;
         cpu.run();
     }
@@ -2653,7 +2671,7 @@ mod test {
         let bus = create_bus(&[0x68, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x01ff, 0x42);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.sp = 0xfe;
         cpu.run();
 
@@ -2668,7 +2686,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.bus
             .write(0x01ff, (Status::INTERRUPT_DISABLE | Status::B_FLAG).bits());
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.sp = 0xfe;
         cpu.run();
 
@@ -2683,7 +2701,7 @@ mod test {
     fn test_0x2a_rol_accumulator() {
         let bus = create_bus(&[0x2a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x40;
         cpu.run();
     }
@@ -2693,7 +2711,7 @@ mod test {
         let bus = create_bus(&[0x26, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x40);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2702,7 +2720,7 @@ mod test {
         let bus = create_bus(&[0x2e, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x40);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2712,7 +2730,7 @@ mod test {
     fn test_0x6a_ror_accumulator() {
         let bus = create_bus(&[0x6a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x02;
         cpu.run();
     }
@@ -2722,7 +2740,7 @@ mod test {
         let bus = create_bus(&[0x66, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x02);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2731,7 +2749,7 @@ mod test {
         let bus = create_bus(&[0x6e, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x02);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2743,7 +2761,7 @@ mod test {
         // Load program with RTI instruction at 0x8000
         let bus = create_bus(&[0x40, 0xff, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
 
         // Set up stack with expected return address and status
         // RTI will pop in reverse order: first status, then PC (lo then hi)
@@ -2770,7 +2788,7 @@ mod test {
         // Load program with RTS instruction at 0x80bus00
         let bus = create_bus(&[0x60, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
 
         // Set up stack with return address (minus one)
         cpu.bus.write_u16(0x01fe, 0x8004);
@@ -2788,7 +2806,7 @@ mod test {
     fn test_0xe9_sbc_immediate() {
         let bus = create_bus(&[0xe9, 0x30, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
     }
@@ -2798,7 +2816,7 @@ mod test {
         let bus = create_bus(&[0xe5, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x10, 0x20);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
     }
@@ -2808,7 +2826,7 @@ mod test {
         let bus = create_bus(&[0xed, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write(0x8020, 0x30);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x60;
         cpu.run();
     }
@@ -2819,7 +2837,7 @@ mod test {
         // 0x50 (80) - 0xFF (255) requires borrow, so carry is cleared
         let bus = create_bus(&[0xe9, 0xff, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
 
@@ -2833,7 +2851,7 @@ mod test {
         // 0x50 (80) - 0x30 (48) = 0x20 (32) -> No borrow
         let bus = create_bus(&[0xe9, 0x30, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.status.insert(Status::CARRY); // Set carry before operation to prevent borrow
         cpu.run();
@@ -2848,7 +2866,7 @@ mod test {
         // 0x50 (80 as i8) - 0xC0 (-64 as i8) = 0x50 - (-64) = 0x90 (-112 as i8) -> Overflow
         let bus = create_bus(&[0xe9, 0xc0, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
@@ -2863,7 +2881,7 @@ mod test {
         // 0xC0 (-64 as i8) - 0x50 (80 as i8) = 0xC0 - 80 = 0x70 (112 as i8) -> Overflow
         let bus = create_bus(&[0xe9, 0x50, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xc0;
         cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
@@ -2878,7 +2896,7 @@ mod test {
         // 0x50 (80 as i8) - 0x20 (32 as i8) = 0x30 (48 as i8)
         let bus = create_bus(&[0xe9, 0x20, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
@@ -2893,7 +2911,7 @@ mod test {
         // 0xD0 (-48 as i8) - 0xA0 (-96 as i8) = 0x30 (48 as i8)
         let bus = create_bus(&[0xe9, 0xa0, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xd0;
         cpu.status.insert(Status::CARRY); // Set carry to avoid borrow
         cpu.run();
@@ -2908,7 +2926,7 @@ mod test {
     fn test_0x38_sec() {
         let bus = create_bus(&[0x38, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2918,7 +2936,7 @@ mod test {
     fn test_0xf8_sed() {
         let bus = create_bus(&[0xf8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2928,7 +2946,7 @@ mod test {
     fn test_0x78_sei() {
         let bus = create_bus(&[0x78, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2938,7 +2956,7 @@ mod test {
     fn test_0x18_clc() {
         let bus = create_bus(&[0x18, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2948,7 +2966,7 @@ mod test {
     fn test_0xd8_cld() {
         let bus = create_bus(&[0xd8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2958,7 +2976,7 @@ mod test {
     fn test_0x58_cli() {
         let bus = create_bus(&[0x58, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2968,7 +2986,7 @@ mod test {
     fn test_0xb8_clv() {
         let bus = create_bus(&[0xb8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -2978,7 +2996,7 @@ mod test {
     fn test_0x85_sta_zero_page() {
         let bus = create_bus(&[0x85, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x42;
         cpu.run();
 
@@ -2989,7 +3007,7 @@ mod test {
     fn test_0x8d_sta_absolute() {
         let bus = create_bus(&[0x8d, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x55;
         cpu.run();
 
@@ -3000,7 +3018,7 @@ mod test {
     fn test_0x95_sta_zero_page_x() {
         let bus = create_bus(&[0x95, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x77;
         cpu.reg_x = 0x05;
         cpu.run();
@@ -3012,7 +3030,7 @@ mod test {
     fn test_0x9d_sta_absolute_x() {
         let bus = create_bus(&[0x9d, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xaa;
         cpu.reg_x = 0x05;
         cpu.run();
@@ -3024,7 +3042,7 @@ mod test {
     fn test_0x99_sta_absolute_y() {
         let bus = create_bus(&[0x99, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xbb;
         cpu.reg_y = 0x10;
         cpu.run();
@@ -3038,7 +3056,7 @@ mod test {
     fn test_0x86_stx_zero_page() {
         let bus = create_bus(&[0x86, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x44;
         cpu.run();
 
@@ -3049,7 +3067,7 @@ mod test {
     fn test_0x8e_stx_absolute() {
         let bus = create_bus(&[0x8e, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x66;
         cpu.run();
 
@@ -3060,7 +3078,7 @@ mod test {
     fn test_0x96_stx_zero_page_y() {
         let bus = create_bus(&[0x96, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x88;
         cpu.reg_y = 0x05;
         cpu.run();
@@ -3074,7 +3092,7 @@ mod test {
     fn test_0x84_sty_zero_page() {
         let bus = create_bus(&[0x84, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x33;
         cpu.run();
 
@@ -3085,7 +3103,7 @@ mod test {
     fn test_0x8c_sty_absolute() {
         let bus = create_bus(&[0x8c, 0x20, 0x80, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x55;
         cpu.run();
 
@@ -3096,7 +3114,7 @@ mod test {
     fn test_0x94_sty_zero_page_x() {
         let bus = create_bus(&[0x94, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x77;
         cpu.reg_x = 0x05;
         cpu.run();
@@ -3110,7 +3128,7 @@ mod test {
     fn test_0xaa_tax_non_zero() {
         let bus = create_bus(&[0xaa, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x42;
         cpu.run();
 
@@ -3122,7 +3140,7 @@ mod test {
     fn test_0xaa_tax_zero() {
         let bus = create_bus(&[0xaa, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x00;
         cpu.run();
 
@@ -3134,7 +3152,7 @@ mod test {
     fn test_0xaa_tax_negative() {
         let bus = create_bus(&[0xaa, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x80;
         cpu.run();
 
@@ -3148,7 +3166,7 @@ mod test {
     fn test_0xa8_tay() {
         let bus = create_bus(&[0xa8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x50;
         cpu.run();
 
@@ -3159,7 +3177,7 @@ mod test {
     fn test_0xa8_tay_zero() {
         let bus = create_bus(&[0xa8, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x00;
         cpu.run();
 
@@ -3173,7 +3191,7 @@ mod test {
     fn test_0xba_tsx() {
         let bus = create_bus(&[0xba, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.run();
     }
 
@@ -3183,7 +3201,7 @@ mod test {
     fn test_0x8a_txa() {
         let bus = create_bus(&[0x8a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x60;
         cpu.run();
 
@@ -3194,7 +3212,7 @@ mod test {
     fn test_0x8a_txa_zero() {
         let bus = create_bus(&[0x8a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x00;
         cpu.run();
 
@@ -3208,7 +3226,7 @@ mod test {
     fn test_0x9a_txs() {
         let bus = create_bus(&[0x9a, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x70;
         cpu.run();
     }
@@ -3219,7 +3237,7 @@ mod test {
     fn test_0x98_tya() {
         let bus = create_bus(&[0x98, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x80;
         cpu.run();
 
@@ -3231,7 +3249,7 @@ mod test {
     fn test_0x98_tya_zero() {
         let bus = create_bus(&[0x98, 0x00]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x00;
         cpu.run();
 
@@ -3247,7 +3265,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.bus.write_u16(0x15, 0x8020);
         cpu.bus.write(0x8020, 0x42);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x05;
         cpu.run();
 
@@ -3260,7 +3278,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu.bus.write_u16(0x10, 0x8020);
         cpu.bus.write(0x8025, 0x55);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x05;
         cpu.run();
 
@@ -3272,7 +3290,7 @@ mod test {
         let bus = create_bus(&[0x81, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write_u16(0x15, 0x8020);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0x99;
         cpu.reg_x = 0x05;
         cpu.run();
@@ -3285,7 +3303,7 @@ mod test {
         let bus = create_bus(&[0x91, 0x10, 0x00]);
         let mut cpu = Cpu::new(bus);
         cpu.bus.write_u16(0x10, 0x8020);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_a = 0xcc;
         cpu.reg_y = 0x05;
         cpu.run();
@@ -3299,7 +3317,7 @@ mod test {
     fn disassemble_implied() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
 
         // Example: NOP (nestest.log: "NOP")
         let result = disassemble(&mut cpu, &[0xea]); // NOP
@@ -3321,7 +3339,7 @@ mod test {
     fn disassemble_accumulator() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
 
         // Example: ASL A (nestest.log: "ASL A")
         let result = disassemble(&mut cpu, &[0x0a]); // ASL A
@@ -3343,7 +3361,7 @@ mod test {
     fn disassemble_immediate() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
 
         // Example: LDA #$00 (nestest.log: "LDA #$00")
         let result = disassemble(&mut cpu, &[0xa9, 0x00]); // LDA #$00
@@ -3370,7 +3388,7 @@ mod test {
     fn disassemble_zero_page() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.bus.write(0x00, 0x00);
         cpu.bus.write(0x01, 0xff);
         cpu.bus.write(0x10, 0x00);
@@ -3395,7 +3413,7 @@ mod test {
     fn disassemble_zero_page_x() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x10;
         cpu.bus.write(0x15, 0xaa);
 
@@ -3414,7 +3432,7 @@ mod test {
     fn disassemble_zero_page_y() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x10;
         cpu.bus.write(0x15, 0xbb);
 
@@ -3434,7 +3452,7 @@ mod test {
     fn disassemble_absolute() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.bus.write(0x8020, 0x42);
 
         // Example: JMP $8020 = 42 (4-digit hex address)
@@ -3451,7 +3469,7 @@ mod test {
     fn disassemble_absolute_x() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x10;
         cpu.bus.write(0x0633, 0x99);
 
@@ -3465,7 +3483,7 @@ mod test {
     fn disassemble_absolute_y() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x10;
         cpu.bus.write(0x0610, 0x77);
 
@@ -3498,7 +3516,7 @@ mod test {
     fn disassemble_indirect() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.bus.write_u16(0x0200, 0xdb7e);
 
         // Example: JMP ($0200) = DB7E (nestest.log format - 4 digit result)
@@ -3511,7 +3529,7 @@ mod test {
     fn disassemble_indexed_indirect() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_x = 0x00;
         cpu.bus.write_u16(0x80, 0x0200);
         cpu.bus.write(0x0200, 0x5a);
@@ -3534,7 +3552,7 @@ mod test {
     fn disassemble_indirect_indexed() {
         let bus = create_bus(&[]);
         let mut cpu = Cpu::new(bus);
-        cpu.reset();
+        cpu.interrupt_reset();
         cpu.reg_y = 0x00;
         cpu.bus.write_u16(0x89, 0x0300);
         cpu.bus.write(0x0300, 0x89);

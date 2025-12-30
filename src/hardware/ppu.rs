@@ -5,22 +5,13 @@ use crate::hardware::{
     rom::ScreenMirroring,
 };
 
-bitflags::bitflags! {
-    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-    pub struct Controller : u8 {
-        const NAMETABLE_X = 0b0000_0001;
-        const NAMETABLE_Y = 0b0000_0010;
-        const VRAM_ADDRESS_INC = 0b0000_0100;
-        const SPRITE_PATTERN_ADDR = 0b0000_1000;
-        const BACKGROUND_PATTERN_ADDR = 0b0001_0000;
-        const SPRITE_SIZE = 0b0010_0000;
-        const MASTER_SLAVE = 0b0100_0000;
-        const GENERATE_NMI = 0b1000_0000;
-    }
-}
+const PPU_CLOCK_MUL: usize = 4;
 
 pub struct Ppu {
+    ticks_to_wait: usize,
+
     bus: Bus,
+    vblank_start_callbacks: Vec<Box<dyn FnMut() + Send + Sync>>,
 
     /// $2000
     controller: Controller,
@@ -68,8 +59,31 @@ impl Ppu {
         }
     }
 
+    pub fn tick(&mut self) {
+        if self.ticks_to_wait != 0 {
+            self.ticks_to_wait -= 1;
+            return;
+        }
+
+        self.step();
+    }
+
     pub fn step(&mut self) {
         // TODO
+        self.ticks_to_wait = PPU_CLOCK_MUL - 1;
+    }
+
+    pub fn register_vblank_start_callback(
+        &mut self,
+        callback: impl FnMut() + Send + Sync + 'static,
+    ) {
+        self.vblank_start_callbacks.push(Box::new(callback));
+    }
+
+    fn trigger_vblank_start(&mut self) {
+        for callback in &mut self.vblank_start_callbacks {
+            callback();
+        }
     }
 }
 
@@ -127,6 +141,20 @@ impl Peripheral for Ppu {
                 warn!("PPU: Write to unknown address {:04X}", address);
             }
         }
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+    pub struct Controller : u8 {
+        const NAMETABLE_X = 0b0000_0001;
+        const NAMETABLE_Y = 0b0000_0010;
+        const VRAM_ADDRESS_INC = 0b0000_0100;
+        const SPRITE_PATTERN_ADDR = 0b0000_1000;
+        const BACKGROUND_PATTERN_ADDR = 0b0001_0000;
+        const SPRITE_SIZE = 0b0010_0000;
+        const MASTER_SLAVE = 0b0100_0000;
+        const GENERATE_NMI = 0b1000_0000;
     }
 }
 

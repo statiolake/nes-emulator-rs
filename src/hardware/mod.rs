@@ -18,12 +18,7 @@ pub mod rom;
 
 pub struct Hardware {
     pub clock: Arc<Mutex<Clock>>,
-
     pub cpu: Arc<Mutex<Cpu>>,
-    pub ppu: Arc<Mutex<Ppu>>,
-
-    pub ram: Arc<Mutex<Ram>>,
-    pub rom: Arc<Mutex<Rom>>,
 }
 
 impl Hardware {
@@ -40,19 +35,11 @@ impl Hardware {
             Arc::clone(&ppu_palette_ram),
         );
         let cpu = Self::assemble_cpu(Arc::clone(&cpu_ram), Arc::clone(&rom), Arc::clone(&ppu));
-        Self::register_clock_callbacks(
-            &mut clock.lock().unwrap(),
-            Arc::clone(&cpu),
-            Arc::clone(&ppu),
-        );
 
-        Hardware {
-            clock,
-            cpu,
-            ppu,
-            ram: cpu_ram,
-            rom,
-        }
+        Self::connect_nmi_pins(Arc::clone(&cpu), Arc::clone(&ppu));
+        Self::connect_clock_pins(Arc::clone(&clock), Arc::clone(&cpu), Arc::clone(&ppu));
+
+        Hardware { clock, cpu }
     }
 
     fn assemble_ppu(
@@ -90,22 +77,28 @@ impl Hardware {
         Arc::new(Mutex::new(Cpu::new(cpu_bus)))
     }
 
-    fn register_clock_callbacks(clock: &mut Clock, cpu: Arc<Mutex<Cpu>>, ppu: Arc<Mutex<Ppu>>) {
+    fn connect_nmi_pins(cpu: Arc<Mutex<Cpu>>, ppu: Arc<Mutex<Ppu>>) {
+        ppu.lock().unwrap().register_vblank_start_callback(move || {
+            cpu.lock().unwrap().interrupt_nmi();
+        });
+    }
+
+    fn connect_clock_pins(clock: Arc<Mutex<Clock>>, cpu: Arc<Mutex<Cpu>>, ppu: Arc<Mutex<Ppu>>) {
+        let mut clock = clock.lock().unwrap();
+
         let cpu = Arc::clone(&cpu);
         clock.register_callback(move || {
-            // TODO: compute cycles
-            cpu.lock().unwrap().step();
+            cpu.lock().unwrap().tick();
         });
 
         let ppu = Arc::clone(&ppu);
         clock.register_callback(move || {
-            // TODO: compute cycles
-            ppu.lock().unwrap().step();
+            ppu.lock().unwrap().tick();
         });
     }
 
     pub fn power_on(&self) {
-        self.cpu.lock().unwrap().reset();
+        self.cpu.lock().unwrap().interrupt_reset();
     }
 
     pub fn tick(&self) {
