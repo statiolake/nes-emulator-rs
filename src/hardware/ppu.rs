@@ -1,6 +1,9 @@
 use log::warn;
 
-use crate::hardware::bus::{Bus, Peripheral};
+use crate::hardware::{
+    bus::{Bus, Connect, Peripheral},
+    rom::ScreenMirroring,
+};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -43,7 +46,7 @@ pub struct Ppu {
     address: Address,
 
     /// $2007
-    data: u8,
+    data_buf: u8,
 
     /// $4014
     oam_dma: u8,
@@ -60,7 +63,7 @@ impl Ppu {
             oam_data: 0,
             scroll: 0,
             address: Address::new(),
-            data: 0,
+            data_buf: 0,
             oam_dma: 0,
         }
     }
@@ -83,9 +86,9 @@ impl Peripheral for Ppu {
             0x6 => (self.address.get() & 0x00ff) as u8, // Return low byte of address
             0x7 => {
                 // For the first read, PPU returns the data at the current address
-                let res = self.data;
+                let res = self.data_buf;
                 // Then it loads new data from the address preparing for the next read
-                self.data = self.bus.read(self.address.get());
+                self.data_buf = self.bus.read(self.address.get());
                 // Finally, it increments the address
                 self.address
                     .increment(self.controller.contains(Controller::VRAM_ADDRESS_INC));
@@ -116,7 +119,7 @@ impl Peripheral for Ppu {
             0x4 => self.oam_data = value,
             0x5 => self.scroll = value,
             0x6 => self.address.update(value),
-            0x7 => self.data = value,
+            0x7 => self.data_buf = value,
             0x2 => {
                 warn!("PPU: Write to read-only address {:04X}", address);
             }
@@ -172,5 +175,40 @@ impl Address {
 impl Default for Address {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub struct PpuRamConnector {
+    screen_mirroring: ScreenMirroring,
+}
+
+impl PpuRamConnector {
+    pub fn new(screen_mirroring: ScreenMirroring) -> Self {
+        PpuRamConnector { screen_mirroring }
+    }
+}
+
+impl Connect for PpuRamConnector {
+    fn bus_addr_range(&self) -> std::ops::RangeInclusive<u16> {
+        0x2000..=0x3fff
+    }
+
+    fn to_device_addr(&self, address: u16) -> u16 {
+        let (nametable_index, address) = ((address & 0x0c00) >> 10, address & 0x03ff);
+        match self.screen_mirroring {
+            ScreenMirroring::Horizontal => match nametable_index {
+                0 | 1 => address,
+                2 | 3 => address + 0x0400,
+                _ => unreachable!(),
+            },
+            ScreenMirroring::Vertical => match nametable_index {
+                0 | 2 => address,
+                1 | 3 => address + 0x0400,
+                _ => unreachable!(),
+            },
+            ScreenMirroring::FourScreen => {
+                panic!("Four-screen mirroring not supported")
+            }
+        }
     }
 }

@@ -22,12 +22,12 @@ impl<P: Peripheral> Peripheral for Arc<Mutex<P>> {
     }
 }
 
-pub trait Connection {
+pub trait Connect {
     fn bus_addr_range(&self) -> RangeInclusive<u16>;
     fn to_device_addr(&self, address: u16) -> u16;
 }
 
-impl Connection for RangeInclusive<u16> {
+impl Connect for RangeInclusive<u16> {
     fn bus_addr_range(&self) -> RangeInclusive<u16> {
         *self.start()..=*self.end()
     }
@@ -51,7 +51,7 @@ impl MirroredRange {
     }
 }
 
-impl Connection for MirroredRange {
+impl Connect for MirroredRange {
     fn bus_addr_range(&self) -> RangeInclusive<u16> {
         *self.base_range.start()..=*self.base_range.end()
     }
@@ -71,7 +71,7 @@ impl IdentityRange {
     }
 }
 
-impl Connection for IdentityRange {
+impl Connect for IdentityRange {
     fn bus_addr_range(&self) -> RangeInclusive<u16> {
         *self.range.start()..=*self.range.end()
     }
@@ -83,7 +83,7 @@ impl Connection for IdentityRange {
 
 pub struct Bus {
     peripherals: Vec<(
-        Box<dyn Connection + Send + Sync>,
+        Box<dyn Connect + Send + Sync>,
         Box<dyn Peripheral + Send + Sync>,
     )>,
 }
@@ -97,7 +97,7 @@ impl Bus {
 
     pub fn connect<C, P>(&mut self, conn: C, peri: P)
     where
-        C: Connection + Send + Sync + 'static,
+        C: Connect + Send + Sync + 'static,
         P: Peripheral + Send + Sync + 'static,
     {
         self.peripherals.push((Box::new(conn), Box::new(peri)));

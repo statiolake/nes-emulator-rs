@@ -11,7 +11,7 @@ pub struct Rom {
     _chr_rom_size: ChrRomSize,
     chr_rom_data: Vec<u8>,
     mapper: Mapper,
-    _screen_mirroring: ScreenMirroring,
+    screen_mirroring: ScreenMirroring,
 }
 
 impl Rom {
@@ -28,8 +28,12 @@ impl Rom {
             _chr_rom_size: chr_rom_size,
             chr_rom_data,
             mapper,
-            _screen_mirroring: mirroring,
+            screen_mirroring: mirroring,
         })
+    }
+
+    pub fn screen_mirroring(&self) -> ScreenMirroring {
+        self.screen_mirroring
     }
 
     pub fn as_prg_peri(this: Arc<Mutex<Self>>) -> PrgRomPeripheral {
@@ -102,6 +106,7 @@ impl Mapper {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScreenMirroring {
     Vertical,
     Horizontal,

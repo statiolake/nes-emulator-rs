@@ -4,7 +4,7 @@ use crate::hardware::{
     bus::{Bus, IdentityRange, MirroredRange},
     clock::Clock,
     cpu::Cpu,
-    ppu::Ppu,
+    ppu::{Ppu, PpuRamConnector},
     ram::Ram,
     rom::Rom,
 };
@@ -60,10 +60,14 @@ impl Hardware {
         ram: Arc<Mutex<Ram>>,
         palette: Arc<Mutex<Ram>>,
     ) -> Arc<Mutex<Ppu>> {
+        let screen_mirroring = {
+            let rom = rom.lock().unwrap();
+            rom.screen_mirroring()
+        };
         let mut ppu_bus = Bus::new();
 
         ppu_bus.connect(0x0000..=0x1fff, Rom::as_chr_peri(rom));
-        ppu_bus.connect(0x2000..=0x3eff, ram);
+        ppu_bus.connect(PpuRamConnector::new(screen_mirroring), ram);
         ppu_bus.connect(0x3f00..=0x3fff, palette);
         // TODO: connect other hardwares to PPU bus
 
@@ -75,11 +79,12 @@ impl Hardware {
         rom: Arc<Mutex<Rom>>,
         ppu: Arc<Mutex<Ppu>>,
     ) -> Arc<Mutex<Cpu>> {
-        use MirroredRange as MR;
+        use {IdentityRange as IR, MirroredRange as MR};
         let mut cpu_bus = Bus::new();
         cpu_bus.connect(MR::new(0x0000..=0x1fff, 0b0000_0111_1111_1111), ram);
-        cpu_bus.connect(IdentityRange::new(0x2000..=0x3fff), Arc::clone(&ppu));
-        cpu_bus.connect(IdentityRange::new(0x4014..=0x4014), Arc::clone(&ppu)); // DMA
+        // Memory-mapped PPU registers
+        cpu_bus.connect(IR::new(0x2000..=0x3fff), Arc::clone(&ppu));
+        cpu_bus.connect(IR::new(0x4014..=0x4014), Arc::clone(&ppu)); // DMA
         cpu_bus.connect(0x8000..=0xffff, Rom::as_prg_peri(rom));
 
         Arc::new(Mutex::new(Cpu::new(cpu_bus)))
