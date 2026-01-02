@@ -1,5 +1,10 @@
+use std::{
+    sync::{Arc, mpsc},
+    thread,
+};
+
 use eframe::NativeOptions;
-use egui::{CentralPanel, Color32, Pos2, Rect, Stroke, Vec2, ViewportBuilder};
+use egui::{CentralPanel, Color32, Pos2, Rect, Vec2, ViewportBuilder};
 
 use crate::hardware::{
     Hardware,
@@ -25,30 +30,42 @@ fn main() -> anyhow::Result<()> {
         )),
         ..NativeOptions::default()
     };
+
+    let rom = Rom::parse(include_bytes!("../rom/nestest.nes"))?;
+    let hardware = Arc::new(Hardware::assemble(rom));
+
+    let (exit_tx, exit_rx) = mpsc::channel();
+    let handle = {
+        let hardware = Arc::clone(&hardware);
+        thread::spawn(move || {
+            hardware.power_on();
+            while exit_rx.try_recv().is_err() {
+                println!("{}", hardware.cpu.lock().unwrap().dump_state());
+                hardware.tick();
+            }
+        })
+    };
+
     eframe::run_native(
         "NES Emulator",
         options,
-        Box::new(|_cc| Ok(Box::new(App::new()))),
+        Box::new(|_cc| Ok(Box::new(App::new(hardware)))),
     )
     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // let rom = Rom::parse(include_bytes!("../rom/nestest.nes"))?;
-    // let hw = Hardware::assemble(rom);
-    // hw.power_on();
-
-    // while !hw.cpu.lock().unwrap().is_halted() {
-    //     println!("{}", hw.cpu.lock().unwrap().dump_state());
-    //     hw.tick();
-    // }
+    exit_tx.send(()).unwrap();
+    handle.join().unwrap();
 
     Ok(())
 }
 
-struct App;
+struct App {
+    hardware: Arc<Hardware>,
+}
 
 impl App {
-    pub fn new() -> Self {
-        Self
+    pub fn new(hardware: Arc<Hardware>) -> Self {
+        Self { hardware }
     }
 }
 
