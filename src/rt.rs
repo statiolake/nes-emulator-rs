@@ -23,11 +23,11 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn new() -> Self {
+    pub fn with_current_time(curr_time: u64) -> Self {
         let waker = Arc::new(Waker::from(CustomWaker::new()));
         Self {
             waker,
-            curr_time: 0,
+            curr_time,
             next_tick: Instant::now(),
             main_chip: None,
             side_chips: vec![],
@@ -131,12 +131,6 @@ pub fn wait_for_cycles(cycles: u64) -> impl Future<Output = ()> + Send {
     }
 }
 
-impl Default for Runtime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct Chip {
     clock_mul: u64,
     future: Pin<Box<dyn Future<Output = ()> + Send>>,
@@ -180,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_hw_rt_empty() {
-        let mut hw = Runtime::new();
+        let mut hw = Runtime::with_current_time(0);
         hw.run_main(3, async {});
     }
 
@@ -189,7 +183,7 @@ mod tests {
         let log = Arc::new(Mutex::new(vec![]));
         let cycles = Arc::new(Mutex::new(0u64));
 
-        let mut hw = Runtime::new();
+        let mut hw = Runtime::with_current_time(0);
 
         hw.add_chip(1, {
             let cycles = Arc::clone(&cycles);
