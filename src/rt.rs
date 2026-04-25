@@ -4,7 +4,7 @@
 
 use std::{
     mem,
-    pin::{Pin, pin},
+    pin::Pin,
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
     thread,
@@ -12,56 +12,50 @@ use std::{
 };
 
 const MASTER_HZ: u64 = 21_477_272; // 21.477272 MHz
+
 const MASTER_TICK_DURATION: Duration = Duration::from_nanos(1_000_000_000 / MASTER_HZ);
 
 pub struct Runtime {
     waker: Arc<Waker>,
     curr_time: u64,
     next_tick: Instant,
-    main_chip: Option<Chip>,
-    side_chips: Vec<Chip>,
+}
+
+pub struct Schedule {
+    main: Option<ClockedFuture>,
+    subs: Vec<ClockedFuture>,
+}
+
+pub struct ClockedFuture {
+    clock_mul: u64,
+    fut: Pin<Box<dyn Future<Output = ()>>>,
 }
 
 impl Runtime {
+    pub fn new() -> Self {
+        Self::with_current_time(0)
+    }
+
     pub fn with_current_time(curr_time: u64) -> Self {
         let waker = Arc::new(Waker::from(CustomWaker::new()));
         Self {
             waker,
             curr_time,
             next_tick: Instant::now(),
-            main_chip: None,
-            side_chips: vec![],
         }
     }
 
-    pub fn add_chip<F>(&mut self, clock_mul: u64, future: F)
-    where
-        F: Future<Output = ()> + Send + 'static,
-    {
-        self.side_chips.push(Chip {
-            clock_mul,
-            future: Box::pin(future),
-        });
-    }
-
-    pub fn run_main<F>(&mut self, clock_mul: u64, future: F)
-    where
-        F: Future<Output = ()> + Send + 'static,
-    {
-        self.main_chip = Some(Chip {
-            clock_mul,
-            future: Box::pin(future),
-        });
-
+    pub fn run<F>(&mut self, sched: Schedule) {
+        let mut sched = sched;
         self.next_tick = Instant::now();
         loop {
-            if !self.tick() {
+            if !self.run_step(&mut sched) {
                 break;
             }
         }
     }
 
-    fn tick(&mut self) -> bool {
+    fn run_step(&mut self, sched: &mut Schedule) -> bool {
         let now = Instant::now();
         if now < self.next_tick {
             thread::sleep(self.next_tick - now);
@@ -70,34 +64,67 @@ impl Runtime {
 
         let mut cx = Context::from_waker(&self.waker);
 
-        let Some(main_chip) = &mut self.main_chip else {
+        let Some(main_task) = &mut sched.main else {
             return false;
         };
 
-        if self.curr_time.is_multiple_of(main_chip.clock_mul)
-            && let Poll::Ready(()) = main_chip.future.as_mut().poll(&mut cx)
+        if self.curr_time.is_multiple_of(main_task.clock_mul)
+            && let Poll::Ready(()) = main_task.future.as_mut().poll(&mut cx)
         {
-            self.main_chip = None;
+            sched.main = None;
         }
 
         // Poll side chips and remove completed ones
-        self.side_chips = mem::take(&mut self.side_chips)
+        sched.subs = mem::take(&mut sched.subs)
             .into_iter()
-            .filter_map(|mut chip| {
-                if !self.curr_time.is_multiple_of(chip.clock_mul) {
-                    return Some(chip);
+            .filter_map(|mut task| {
+                if !self.curr_time.is_multiple_of(task.clock_mul) {
+                    return Some(task);
                 }
 
-                match chip.future.as_mut().poll(&mut cx) {
+                match task.future.as_mut().poll(&mut cx) {
                     Poll::Ready(()) => None,
-                    Poll::Pending => Some(chip),
+                    Poll::Pending => Some(task),
                 }
             })
             .collect();
 
         self.curr_time += 1;
 
-        self.main_chip.is_some()
+        sched.main_chip.is_some()
+    }
+}
+
+impl Schedule {
+    pub fn new() -> Self {
+        Schedule {
+            main: None,
+            subs: vec![],
+        }
+    }
+
+    pub fn with_main(mut self, main: ClockedFuture) -> Self {
+        self.main = Some(main);
+        self
+    }
+
+    pub fn with_sub(mut self, sub: ClockedFuture) -> Self {
+        self.subs.push(sub);
+        self
+    }
+}
+
+struct CustomWaker;
+
+impl CustomWaker {
+    fn new() -> Arc<Self> {
+        Arc::new(CustomWaker)
+    }
+}
+
+impl Wake for CustomWaker {
+    fn wake(self: Arc<Self>) {
+        // todo
     }
 }
 
@@ -131,51 +158,22 @@ pub fn wait_for_cycles(cycles: u64) -> impl Future<Output = ()> + Send {
     }
 }
 
-pub struct Chip {
-    clock_mul: u64,
-    future: Pin<Box<dyn Future<Output = ()> + Send>>,
-}
-
-pub fn block_on<F, T>(future: F) -> T
-where
-    F: Future<Output = T>,
-{
-    let mut future = pin!(future);
-
-    let waker = Waker::from(CustomWaker::new());
-    let mut cx = Context::from_waker(&waker);
-
-    loop {
-        if let Poll::Ready(value) = future.as_mut().poll(&mut cx) {
-            return value;
-        }
-    }
-}
-
-struct CustomWaker;
-
-impl CustomWaker {
-    fn new() -> Arc<Self> {
-        Arc::new(CustomWaker)
-    }
-}
-
-impl Wake for CustomWaker {
-    fn wake(self: Arc<Self>) {
-        // todo
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::rt::{self, Runtime};
+    use crate::rt::{self, ClockedFuture, Runtime, Schedule};
 
     #[test]
     fn test_hw_rt_empty() {
-        let mut hw = Runtime::with_current_time(0);
-        hw.run_main(3, async {});
+        let mut rt = Runtime::new();
+        rt.run(Schedule {
+            main: Some(ClockedFuture {
+                clock_mul: 3,
+                fut: Box::pin(async {}),
+            }),
+            subs: vec![],
+        });
     }
 
     #[test]
@@ -183,39 +181,49 @@ mod tests {
         let log = Arc::new(Mutex::new(vec![]));
         let cycles = Arc::new(Mutex::new(0u64));
 
-        let mut hw = Runtime::with_current_time(0);
+        let mut rt = Runtime::new();
 
-        hw.add_chip(1, {
-            let cycles = Arc::clone(&cycles);
-            async move {
-                loop {
-                    *cycles.lock().unwrap() += 1;
-                    rt::yield_now().await;
-                }
-            }
-        });
+        let sched = Schedule::new()
+            .with_main(ClockedFuture {
+                clock_mul: 1,
+                fut: {
+                    let cycles = Arc::clone(&cycles);
+                    Box::pin(async move {
+                        loop {
+                            *cycles.lock().unwrap() += 1;
+                            rt::yield_now().await;
+                        }
+                    })
+                },
+            })
+            .with_sub(ClockedFuture {
+                clock_mul: 5,
+                fut: {
+                    let log = Arc::clone(&log);
+                    Box::pin(async move {
+                        log.lock().unwrap().push("side start");
+                        loop {
+                            log.lock().unwrap().push("side tick");
+                            rt::wait_for_cycles(1).await;
+                        }
+                    })
+                },
+            })
+            .with_sub(ClockedFuture {
+                clock_mul: 3,
+                fut: {
+                    let log = Arc::clone(&log);
+                    Box::pin(async move {
+                        log.lock().unwrap().push("main start");
+                        for _ in 0..5 {
+                            log.lock().unwrap().push("main tick");
+                            rt::wait_for_cycles(1).await;
+                        }
+                    })
+                },
+            });
 
-        hw.add_chip(5, {
-            let log = Arc::clone(&log);
-            async move {
-                log.lock().unwrap().push("side start");
-                loop {
-                    log.lock().unwrap().push("side tick");
-                    rt::wait_for_cycles(1).await;
-                }
-            }
-        });
-
-        hw.run_main(3, {
-            let log = Arc::clone(&log);
-            async move {
-                log.lock().unwrap().push("main start");
-                for _ in 0..5 {
-                    log.lock().unwrap().push("main tick");
-                    rt::wait_for_cycles(1).await;
-                }
-            }
-        });
+        rt.run(sched);
 
         assert_eq!(
             log.lock().unwrap().as_slice(),
