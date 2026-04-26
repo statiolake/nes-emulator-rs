@@ -65,13 +65,13 @@ impl Bus {
         }
     }
 
-    pub async fn read_u16(&mut self, address: u16) -> u16 {
+    pub async fn read_u16(&self, address: u16) -> u16 {
         let lo = self.read(address).await;
         let hi = self.read(address.wrapping_add(1)).await;
         u16::from_le_bytes([lo, hi])
     }
 
-    pub async fn write(&mut self, address: u16, value: u8) {
+    pub async fn write(&self, address: u16, value: u8) {
         {
             let mut state = self.state.lock().unwrap();
             if let BusState::Empty = *state {
@@ -94,7 +94,7 @@ impl Bus {
         }
     }
 
-    pub fn write_u16(&mut self, bus_addr: u16, value: u16) {
+    pub fn write_u16(&self, bus_addr: u16, value: u16) {
         let bytes = value.to_le_bytes();
         self.write(bus_addr, bytes[0]);
         self.write(bus_addr.wrapping_add(1), bytes[1]);
