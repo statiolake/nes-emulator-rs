@@ -1,11 +1,13 @@
-use crate::hardware::bus::Peripheral;
+use std::sync::Arc;
+
+use crate::hardware::bus::{Bus, Peripheral};
 
 pub struct Ram {
     data: Vec<u8>,
 }
 
 impl Ram {
-    pub fn new(size: usize) -> Self {
+    pub fn mount(size: usize) -> Self {
         Ram {
             data: vec![0; size],
         }
@@ -44,5 +46,13 @@ impl Peripheral for Ram {
 
     fn write(&mut self, address: u16, value: u8) {
         self.write(address, value);
+    }
+}
+
+pub struct CpuRam(Ram);
+
+impl CpuRam {
+    pub fn mount(cpu_bus: Arc<Bus>) -> CpuRam {
+        CpuRam(Ram::mount(cpu_bus, 0x0000..=0x1fff, 0b0000_0111_1111_1111))
     }
 }

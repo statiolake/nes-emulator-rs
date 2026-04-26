@@ -27,8 +27,8 @@ pub struct Schedule {
 }
 
 pub struct ClockedFuture {
-    clock_mul: u64,
-    fut: Pin<Box<dyn Future<Output = ()>>>,
+    pub clock_mul: u64,
+    pub future: Pin<Box<dyn Future<Output = ()>>>,
 }
 
 impl Runtime {
@@ -170,7 +170,7 @@ mod tests {
         rt.run(Schedule {
             main: Some(ClockedFuture {
                 clock_mul: 3,
-                fut: Box::pin(async {}),
+                future: Box::pin(async {}),
             }),
             subs: vec![],
         });
@@ -186,7 +186,7 @@ mod tests {
         let sched = Schedule::new()
             .with_main(ClockedFuture {
                 clock_mul: 1,
-                fut: {
+                future: {
                     let cycles = Arc::clone(&cycles);
                     Box::pin(async move {
                         loop {
@@ -198,7 +198,7 @@ mod tests {
             })
             .with_sub(ClockedFuture {
                 clock_mul: 5,
-                fut: {
+                future: {
                     let log = Arc::clone(&log);
                     Box::pin(async move {
                         log.lock().unwrap().push("side start");
@@ -211,7 +211,7 @@ mod tests {
             })
             .with_sub(ClockedFuture {
                 clock_mul: 3,
-                fut: {
+                future: {
                     let log = Arc::clone(&log);
                     Box::pin(async move {
                         log.lock().unwrap().push("main start");

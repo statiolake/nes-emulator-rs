@@ -1,9 +1,5 @@
 use std::sync::Mutex;
 
-// TODO: move this to appropriate place
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ChipKind {}
-
 use crate::rt;
 
 #[derive(Debug)]
@@ -15,32 +11,22 @@ pub struct Bus {
 pub enum State {
     Empty,
     Read {
-        // who requests this operation: for debugging purpose
-        requestor: ChipKind,
-
         address: u16,
     },
     ReadComplete {
-        // who requests this operation: for debugging purpose
-        requestor: ChipKind,
         // who responds this request: for debugging purpose
-        responder: ChipKind,
+        responder: &'static str,
 
         address: u16,
         data: u8,
     },
     Write {
-        // who requests this operation: for debugging purpose
-        requestor: ChipKind,
-
         address: u16,
         value: u8,
     },
     WriteComplete {
-        // who requests this operation: for debugging purpose
-        requestor: ChipKind,
         // who responds this request: for debugging purpose
-        responder: ChipKind,
+        responder: &'static str,
 
         address: u16,
         data: u8,
@@ -54,14 +40,14 @@ impl Bus {
         }
     }
 
-    pub async fn read(&self, address: u16, requestor: ChipKind) -> u8 {
+    pub async fn read(&self, address: u16) -> u8 {
         {
             let mut state = self.state.lock().unwrap();
             if let State::Empty = *state {
                 panic!("previous bus operation is not correctly finished: {state:?}");
             }
 
-            *state = State::Read { requestor, address };
+            *state = State::Read { address };
         }
 
         // Chips must be respond within this one cycle.
@@ -79,18 +65,20 @@ impl Bus {
         }
     }
 
-    pub async fn write(&mut self, address: u16, value: u8, requestor: ChipKind) {
+    pub async fn read_u16(&mut self, address: u16) -> u16 {
+        let lo = self.read(address).await;
+        let hi = self.read(address.wrapping_add(1)).await;
+        u16::from_le_bytes([lo, hi])
+    }
+
+    pub async fn write(&mut self, address: u16, value: u8) {
         {
             let mut state = self.state.lock().unwrap();
             if let State::Empty = *state {
                 panic!("previous bus operation is not correctly finished: {state:?}");
             }
 
-            *state = State::Write {
-                requestor,
-                address,
-                value,
-            };
+            *state = State::Write { address, value };
         }
 
         // Chips must be respond within this one cycle.
@@ -104,6 +92,12 @@ impl Bus {
 
             *state = State::Empty;
         }
+    }
+
+    pub fn write_u16(&mut self, bus_addr: u16, value: u16) {
+        let bytes = value.to_le_bytes();
+        self.write(bus_addr, bytes[0]);
+        self.write(bus_addr.wrapping_add(1), bytes[1]);
     }
 }
 
