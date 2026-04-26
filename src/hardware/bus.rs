@@ -4,11 +4,11 @@ use crate::rt;
 
 #[derive(Debug)]
 pub struct Bus {
-    pub state: Mutex<State>,
+    pub state: Mutex<BusState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum State {
+pub enum BusState {
     Empty,
     Read {
         address: u16,
@@ -29,25 +29,25 @@ pub enum State {
         responder: &'static str,
 
         address: u16,
-        data: u8,
+        value: u8,
     },
 }
 
 impl Bus {
     pub fn new() -> Self {
         Bus {
-            state: Mutex::new(State::Empty),
+            state: Mutex::new(BusState::Empty),
         }
     }
 
     pub async fn read(&self, address: u16) -> u8 {
         {
             let mut state = self.state.lock().unwrap();
-            if let State::Empty = *state {
+            if let BusState::Empty = *state {
                 panic!("previous bus operation is not correctly finished: {state:?}");
             }
 
-            *state = State::Read { address };
+            *state = BusState::Read { address };
         }
 
         // Chips must be respond within this one cycle.
@@ -55,11 +55,11 @@ impl Bus {
 
         {
             let state = self.state.lock().unwrap();
-            let State::ReadComplete { data, .. } = *state else {
+            let BusState::ReadComplete { data, .. } = *state else {
                 panic!("chip does not respond to the read request: {state:?}");
             };
 
-            *state = State::Empty;
+            *state = BusState::Empty;
 
             data
         }
@@ -74,11 +74,11 @@ impl Bus {
     pub async fn write(&mut self, address: u16, value: u8) {
         {
             let mut state = self.state.lock().unwrap();
-            if let State::Empty = *state {
+            if let BusState::Empty = *state {
                 panic!("previous bus operation is not correctly finished: {state:?}");
             }
 
-            *state = State::Write { address, value };
+            *state = BusState::Write { address, value };
         }
 
         // Chips must be respond within this one cycle.
@@ -86,11 +86,11 @@ impl Bus {
 
         {
             let state = self.state.lock().unwrap();
-            let State::WriteComplete { .. } = *state else {
+            let BusState::WriteComplete { .. } = *state else {
                 panic!("chip does not respond to the read request: {state:?}");
             };
 
-            *state = State::Empty;
+            *state = BusState::Empty;
         }
     }
 
