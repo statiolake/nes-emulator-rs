@@ -3,7 +3,6 @@
 //! reference: https://techracho.bpsinc.jp/yoshi/2024_12_13/147377
 
 use std::{
-    mem,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
@@ -12,105 +11,114 @@ use std::{
 };
 
 const MASTER_HZ: u64 = 21_477_272; // 21.477272 MHz
+const SYNC_HZ: u64 = 60; // synchronize at 60 Hz
 
-const MASTER_TICK_DURATION: Duration = Duration::from_nanos(1_000_000_000 / MASTER_HZ);
+const SYNC_INTERVAL_TICKS: u64 = MASTER_HZ / SYNC_HZ;
+const SYNC_DURATION: Duration = Duration::from_nanos(1_000_000_000 / SYNC_HZ);
 
 pub struct Runtime {
     waker: Arc<Waker>,
     curr_time: u64,
-    next_tick: Instant,
+    next_sync: Instant,
 }
 
-pub struct Schedule {
-    main: Option<ClockedFuture>,
-    subs: Vec<ClockedFuture>,
+pub struct Schedule<T> {
+    main: Task<T>,
+    subs: Vec<Task<()>>,
 }
 
-pub struct ClockedFuture {
+pub enum Task<T> {
+    Running(ClockedFuture<T>),
+    Finished,
+}
+
+pub struct ClockedFuture<T> {
     pub clock_mul: u64,
-    pub future: Pin<Box<dyn Future<Output = ()>>>,
+    pub future: Pin<Box<dyn Future<Output = T>>>,
 }
 
 impl Runtime {
     pub fn new() -> Self {
-        Self::with_current_time(0)
-    }
-
-    pub fn with_current_time(curr_time: u64) -> Self {
-        let waker = Arc::new(Waker::from(CustomWaker::new()));
         Self {
-            waker,
-            curr_time,
-            next_tick: Instant::now(),
+            waker: Arc::new(Waker::from(CustomWaker::new())),
+            curr_time: 0,
+            next_sync: Instant::now(),
         }
     }
 
-    pub fn run<F>(&mut self, sched: Schedule) {
-        let mut sched = sched;
-        self.next_tick = Instant::now();
+    pub fn run<T>(&mut self, mut sched: Schedule<T>) -> T {
+        self.curr_time = 0;
+        self.next_sync = Instant::now();
+
         loop {
-            if !self.run_step(&mut sched) {
-                break;
+            self.sync();
+            if let Ok(ret) = self.run_step(&mut sched) {
+                break ret;
             }
         }
     }
 
-    fn run_step(&mut self, sched: &mut Schedule) -> bool {
-        let now = Instant::now();
-        if now < self.next_tick {
-            thread::sleep(self.next_tick - now);
-        }
-        self.next_tick += MASTER_TICK_DURATION;
+    fn sync(&mut self) {
+        if self.curr_time.is_multiple_of(SYNC_INTERVAL_TICKS) {
+            let now = Instant::now();
+            if now < self.next_sync {
+                thread::sleep(self.next_sync - now);
+            }
 
+            self.next_sync += SYNC_DURATION;
+        }
+    }
+
+    fn run_step<T>(&mut self, sched: &mut Schedule<T>) -> Result<T, ()> {
         let mut cx = Context::from_waker(&self.waker);
 
-        let Some(main_task) = &mut sched.main else {
-            return false;
-        };
-
-        if self.curr_time.is_multiple_of(main_task.clock_mul)
-            && let Poll::Ready(()) = main_task.future.as_mut().poll(&mut cx)
-        {
-            sched.main = None;
+        // Poll main and side chips and remove completed ones
+        let ret = sched.main.step(self.curr_time, &mut cx);
+        for task in &mut sched.subs {
+            task.step(self.curr_time, &mut cx);
         }
-
-        // Poll side chips and remove completed ones
-        sched.subs = mem::take(&mut sched.subs)
-            .into_iter()
-            .filter_map(|mut task| {
-                if !self.curr_time.is_multiple_of(task.clock_mul) {
-                    return Some(task);
-                }
-
-                match task.future.as_mut().poll(&mut cx) {
-                    Poll::Ready(()) => None,
-                    Poll::Pending => Some(task),
-                }
-            })
-            .collect();
 
         self.curr_time += 1;
 
-        sched.main_chip.is_some()
+        ret
     }
 }
 
-impl Schedule {
+impl<T> Schedule<T> {
     pub fn new() -> Self {
         Schedule {
-            main: None,
+            main: Task::Finished,
             subs: vec![],
         }
     }
 
-    pub fn with_main(mut self, main: ClockedFuture) -> Self {
-        self.main = Some(main);
+    pub fn with_main(mut self, main: ClockedFuture<T>) -> Self {
+        self.main = Task::Running(main);
         self
     }
 
-    pub fn with_sub(mut self, sub: ClockedFuture) -> Self {
-        self.subs.push(sub);
+    pub fn with_sub(mut self, sub: ClockedFuture<()>) -> Self {
+        self.subs.push(Task::Running(sub));
         self
+    }
+}
+
+impl<T> Task<T> {
+    fn step(&mut self, curr_time: u64, cx: &mut Context<'_>) -> Result<T, ()> {
+        match self {
+            Self::Finished => panic!("step() called after finish"),
+            Self::Running(task) => {
+                if curr_time.is_multiple_of(task.clock_mul)
+                    && let Poll::Ready(ret) = task.future.as_mut().poll(cx)
+                {
+                    // Remove as completed
+                    *self = Self::Finished;
+                    Ok(ret)
+                } else {
+                    Err(())
+                }
+            }
+        }
     }
 }
 
@@ -162,18 +170,16 @@ pub fn wait_for_cycles(cycles: u64) -> impl Future<Output = ()> + Send {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::rt::{self, ClockedFuture, Runtime, Schedule};
+    use super::*;
+    use crate::rt;
 
     #[test]
     fn test_hw_rt_empty() {
         let mut rt = Runtime::new();
-        rt.run(Schedule {
-            main: Some(ClockedFuture {
-                clock_mul: 3,
-                future: Box::pin(async {}),
-            }),
-            subs: vec![],
-        });
+        rt.run(Schedule::new().with_main(ClockedFuture {
+            clock_mul: 3,
+            future: Box::pin(async {}),
+        }));
     }
 
     #[test]

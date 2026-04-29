@@ -1,9 +1,4 @@
-use log::warn;
-
-use crate::hardware::{
-    bus::{Bus, Connect, Peripheral},
-    rom::ScreenMirroring,
-};
+use crate::hardware::{bus::Bus, rom::ScreenMirroring};
 
 const PPU_CLOCK_MUL: usize = 4;
 pub const DISPLAY_WIDTH: usize = 256;
@@ -108,72 +103,72 @@ impl Ppu {
     }
 }
 
-impl Peripheral for Ppu {
-    fn read(&mut self, address: u16) -> u8 {
-        if address == 0x4014 {
-            return self.oam_dma;
-        }
-
-        match (address - 0x2000) % 8 {
-            0x2 => self.status.bits(),
-            0x3 => self.oam_address,
-            0x4 => self.oam_data,
-            0x6 => (self.address.get() & 0x00ff) as u8, // Return low byte of address
-            0x7 => {
-                // For the first read, PPU returns the data at the current address
-                let res = self.data_buf;
-                // Then it loads new data from the address preparing for the next read
-                self.data_buf = self.bus.read(self.address.get());
-                // Finally, it increments the address
-                self.address
-                    .increment(self.control.contains(Control::VRAM_ADDRESS_INC));
-
-                res
-            }
-            0x0 | 0x1 | 0x5 => {
-                warn!("PPU: Read from write-only address {:04X}", address);
-                0
-            }
-            _ => {
-                warn!("PPU: Read from unknown address {:04X}", address);
-                0
-            }
-        }
-    }
-
-    fn write(&mut self, address: u16, value: u8) {
-        if address == 0x4014 {
-            self.oam_dma = value;
-            return;
-        }
-
-        match (address - 0x2000) % 8 {
-            0x0 => {
-                let old_control = self.control;
-                self.control = Control::from_bits_truncate(value);
-                // If PPU is VBLANK and NMI generation is just enabled, trigger NMI
-                if self.status.contains(Status::VBLANK)
-                    && !old_control.contains(Control::GENERATE_NMI)
-                    && self.control.contains(Control::GENERATE_NMI)
-                {
-                    self.trigger_vblank_start();
-                }
-            }
-            0x1 => self.mask = value,
-            0x3 => self.oam_address = value,
-            0x4 => self.oam_data = value,
-            0x5 => self.scroll = value,
-            0x6 => self.address.update(value),
-            0x7 => self.data_buf = value,
-            0x2 => {
-                warn!("PPU: Write to read-only address {:04X}", address);
-            }
-            _ => {
-                warn!("PPU: Write to unknown address {:04X}", address);
-            }
-        }
-    }
-}
+// impl Peripheral for Ppu {
+//     fn read(&mut self, address: u16) -> u8 {
+//         if address == 0x4014 {
+//             return self.oam_dma;
+//         }
+//
+//         match (address - 0x2000) % 8 {
+//             0x2 => self.status.bits(),
+//             0x3 => self.oam_address,
+//             0x4 => self.oam_data,
+//             0x6 => (self.address.get() & 0x00ff) as u8, // Return low byte of address
+//             0x7 => {
+//                 // For the first read, PPU returns the data at the current address
+//                 let res = self.data_buf;
+//                 // Then it loads new data from the address preparing for the next read
+//                 self.data_buf = self.bus.read(self.address.get());
+//                 // Finally, it increments the address
+//                 self.address
+//                     .increment(self.control.contains(Control::VRAM_ADDRESS_INC));
+//
+//                 res
+//             }
+//             0x0 | 0x1 | 0x5 => {
+//                 warn!("PPU: Read from write-only address {:04X}", address);
+//                 0
+//             }
+//             _ => {
+//                 warn!("PPU: Read from unknown address {:04X}", address);
+//                 0
+//             }
+//         }
+//     }
+//
+//     fn write(&mut self, address: u16, value: u8) {
+//         if address == 0x4014 {
+//             self.oam_dma = value;
+//             return;
+//         }
+//
+//         match (address - 0x2000) % 8 {
+//             0x0 => {
+//                 let old_control = self.control;
+//                 self.control = Control::from_bits_truncate(value);
+//                 // If PPU is VBLANK and NMI generation is just enabled, trigger NMI
+//                 if self.status.contains(Status::VBLANK)
+//                     && !old_control.contains(Control::GENERATE_NMI)
+//                     && self.control.contains(Control::GENERATE_NMI)
+//                 {
+//                     self.trigger_vblank_start();
+//                 }
+//             }
+//             0x1 => self.mask = value,
+//             0x3 => self.oam_address = value,
+//             0x4 => self.oam_data = value,
+//             0x5 => self.scroll = value,
+//             0x6 => self.address.update(value),
+//             0x7 => self.data_buf = value,
+//             0x2 => {
+//                 warn!("PPU: Write to read-only address {:04X}", address);
+//             }
+//             _ => {
+//                 warn!("PPU: Write to unknown address {:04X}", address);
+//             }
+//         }
+//     }
+// }
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -256,30 +251,30 @@ impl PpuRamConnector {
     }
 }
 
-impl Connect for PpuRamConnector {
-    fn bus_addr_range(&self) -> std::ops::RangeInclusive<u16> {
-        0x2000..=0x3fff
-    }
-
-    fn to_device_addr(&self, address: u16) -> u16 {
-        let (nametable_index, address) = ((address & 0x0c00) >> 10, address & 0x03ff);
-        match self.screen_mirroring {
-            ScreenMirroring::Horizontal => match nametable_index {
-                0 | 1 => address,
-                2 | 3 => address + 0x0400,
-                _ => unreachable!(),
-            },
-            ScreenMirroring::Vertical => match nametable_index {
-                0 | 2 => address,
-                1 | 3 => address + 0x0400,
-                _ => unreachable!(),
-            },
-            ScreenMirroring::FourScreen => {
-                panic!("Four-screen mirroring not supported")
-            }
-        }
-    }
-}
+// impl Connect for PpuRamConnector {
+//     fn bus_addr_range(&self) -> std::ops::RangeInclusive<u16> {
+//         0x2000..=0x3fff
+//     }
+//
+//     fn to_device_addr(&self, address: u16) -> u16 {
+//         let (nametable_index, address) = ((address & 0x0c00) >> 10, address & 0x03ff);
+//         match self.screen_mirroring {
+//             ScreenMirroring::Horizontal => match nametable_index {
+//                 0 | 1 => address,
+//                 2 | 3 => address + 0x0400,
+//                 _ => unreachable!(),
+//             },
+//             ScreenMirroring::Vertical => match nametable_index {
+//                 0 | 2 => address,
+//                 1 | 3 => address + 0x0400,
+//                 _ => unreachable!(),
+//             },
+//             ScreenMirroring::FourScreen => {
+//                 panic!("Four-screen mirroring not supported")
+//             }
+//         }
+//     }
+// }
 
 pub struct Frame {
     pub data: Vec<u8>,

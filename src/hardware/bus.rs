@@ -1,10 +1,10 @@
-use std::sync::Mutex;
+use std::cell::Cell;
 
 use crate::rt;
 
 #[derive(Debug)]
 pub struct Bus {
-    pub state: Mutex<BusState>,
+    pub state: Cell<BusState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -36,33 +36,28 @@ pub enum BusState {
 impl Bus {
     pub fn new() -> Self {
         Bus {
-            state: Mutex::new(BusState::Empty),
+            state: Cell::new(BusState::Empty),
         }
     }
 
     pub async fn read(&self, address: u16) -> u8 {
-        {
-            let mut state = self.state.lock().unwrap();
-            if let BusState::Empty = *state {
-                panic!("previous bus operation is not correctly finished: {state:?}");
-            }
-
-            *state = BusState::Read { address };
+        let state = self.state.get();
+        if let BusState::Empty = state {
+            panic!("previous bus operation is not correctly finished: {state:?}");
         }
+        self.state.set(BusState::Read { address });
 
         // Chips must be respond within this one cycle.
         rt::yield_now().await;
 
-        {
-            let state = self.state.lock().unwrap();
-            let BusState::ReadComplete { data, .. } = *state else {
-                panic!("chip does not respond to the read request: {state:?}");
-            };
+        let state = self.state.get();
+        let BusState::ReadComplete { data, .. } = state else {
+            panic!("chip does not respond to the read request: {state:?}");
+        };
 
-            *state = BusState::Empty;
+        self.state.set(BusState::Empty);
 
-            data
-        }
+        data
     }
 
     pub async fn read_u16(&self, address: u16) -> u16 {
@@ -72,26 +67,22 @@ impl Bus {
     }
 
     pub async fn write(&self, address: u16, value: u8) {
-        {
-            let mut state = self.state.lock().unwrap();
-            if let BusState::Empty = *state {
-                panic!("previous bus operation is not correctly finished: {state:?}");
-            }
-
-            *state = BusState::Write { address, value };
+        let state = self.state.get();
+        if let BusState::Empty = state {
+            panic!("previous bus operation is not correctly finished: {state:?}");
         }
+
+        self.state.set(BusState::Write { address, value });
 
         // Chips must be respond within this one cycle.
         rt::yield_now().await;
 
-        {
-            let state = self.state.lock().unwrap();
-            let BusState::WriteComplete { .. } = *state else {
-                panic!("chip does not respond to the read request: {state:?}");
-            };
+        let state = self.state.get();
+        let BusState::WriteComplete { .. } = state else {
+            panic!("chip does not respond to the read request: {state:?}");
+        };
 
-            *state = BusState::Empty;
-        }
+        self.state.set(BusState::Empty);
     }
 
     pub fn write_u16(&self, bus_addr: u16, value: u16) {

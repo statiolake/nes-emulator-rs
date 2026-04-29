@@ -33,7 +33,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let rom = Rom::parse(include_bytes!("../rom/nestest.nes"))?;
-    let hardware = Arc::new(Hardware::assemble(rom));
+    let hardware = Arc::new(Hardware::assemble());
 
     let (exit_tx, exit_rx) = mpsc::channel();
     let handle = {

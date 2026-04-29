@@ -1,13 +1,16 @@
-use std::sync::Arc;
+use std::{
+    rc::Rc,
+    sync::mpsc::{self, Receiver},
+};
 
 use crate::{
     hardware::{
-        bus::{Bus, IdentityRange, MirroredRange},
-        cpu::Cpu,
-        ram::{CpuRam, Ram},
+        bus::Bus,
+        cpu::{Cpu, CpuMountOptions},
+        ram::CpuRam,
         rom::Rom,
     },
-    rt::{self, Runtime},
+    rt::{ClockedFuture, Schedule},
 };
 
 pub mod bus;
@@ -18,37 +21,64 @@ pub mod ram;
 pub mod rom;
 
 pub struct Hardware {
-    cpu_bus: Arc<Bus>,
-    cpu: Cpu,
-    cpu_ram: CpuRam,
-
-    rom_slot: RomSlot,
+    pub cpu_bus: Rc<Bus>,
+    pub cpu: Rc<Cpu>,
+    pub cpu_debug_rx: Receiver<String>,
+    pub cpu_ram: Rc<CpuRam>,
+    // pub rom_slot: RomSlot,
 }
 
 impl Hardware {
     pub fn assemble() -> Self {
-        let cpu_bus = Arc::new(Bus::new());
+        let cpu_bus = Rc::new(Bus::new());
 
-        let cpu = Cpu::mount(Arc::clone(&cpu_bus));
-        let cpu_ram = CpuRam::mount(Arc::clone(&cpu_bus));
+        let (cpu_debug_tx, cpu_debug_rx) = mpsc::channel();
+        let cpu = Rc::new(Cpu::mount(
+            Rc::clone(&cpu_bus),
+            CpuMountOptions {
+                debug_tx: Some(cpu_debug_tx),
+            },
+        ));
+        let cpu_ram = Rc::new(CpuRam::mount(Rc::clone(&cpu_bus)));
 
-        let rom_slot = RomSlot::mount(Arc::clone(&cpu_bus));
+        // let rom_slot = RomSlot::mount(Arc::clone(&cpu_bus));
 
         Hardware {
             cpu_bus,
             cpu,
             cpu_ram,
-
-            rom_slot,
+            cpu_debug_rx,
+            // rom_slot,
         }
     }
 
-    pub fn insert(&mut self, rom: Rom) {
+    pub fn insert(&self, rom: Rom) {
         self.rom_slot.insert(rom)
     }
 
-    pub fn eject(&mut self) -> Option<Rom> {
+    pub fn eject(&self) -> Option<Rom> {
         self.rom_slot.eject()
+    }
+
+    pub fn to_schedule(&self) -> Schedule<()> {
+        Schedule::new()
+            .with_main(ClockedFuture {
+                clock_mul: 12,
+                future: Box::pin({
+                    let cpu = Rc::clone(&self.cpu);
+                    async move {
+                        cpu.interrupt_reset().await;
+                        cpu.run().await
+                    }
+                }),
+            })
+            .with_sub(ClockedFuture {
+                clock_mul: 1,
+                future: Box::pin({
+                    let mem = Rc::clone(&self.cpu_ram);
+                    async move { mem.inner.run().await }
+                }),
+            })
     }
 
     //     fn assemble_ppu(
@@ -105,25 +135,4 @@ impl Hardware {
     //             ppu.lock().unwrap().tick();
     //         });
     //     }
-
-    pub fn power_on(&self) {
-        self.cpu.lock().unwrap().interrupt_reset();
-    }
-
-    pub fn tick(&self) {
-        self.clock.lock().unwrap().tick();
-    }
-}
-
-#[test]
-fn test1() {
-    let hw = Hardware::assemble();
-    let rom = Rom::load();
-    hw.insert_rom(rom);
-    rt.run(&mut hw);
-    let rom = hw.eject_rom();
-
-    rt = Runtime { clock };
-
-    hw = Hardware { cpu, ppu, ram, rom };
 }

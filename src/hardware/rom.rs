@@ -1,9 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::bail;
-use log::warn;
-
-use crate::hardware::bus::Peripheral;
 
 pub struct Rom {
     prg_rom_size: PrgRomSize,
@@ -167,33 +164,33 @@ pub struct ChrRomPeripheral {
     rom: Arc<Mutex<Rom>>,
 }
 
-impl Peripheral for PrgRomPeripheral {
-    fn read(&mut self, address: u16) -> u8 {
-        let rom = self.rom.lock().unwrap();
-        let address = match rom.mapper {
-            Mapper::None => address & rom.prg_rom_size.mirror_mask(),
-        };
-        rom.prg_rom_data[address as usize]
-    }
+// impl Peripheral for PrgRomPeripheral {
+//     fn read(&mut self, address: u16) -> u8 {
+//         let rom = self.rom.lock().unwrap();
+//         let address = match rom.mapper {
+//             Mapper::None => address & rom.prg_rom_size.mirror_mask(),
+//         };
+//         rom.prg_rom_data[address as usize]
+//     }
+//
+//     fn write(&mut self, _address: u16, _value: u8) {
+//         // ROM is read-only; writes are ignored.
+//         warn!("Attempted to write to ROM, which is read-only.");
+//     }
+// }
 
-    fn write(&mut self, _address: u16, _value: u8) {
-        // ROM is read-only; writes are ignored.
-        warn!("Attempted to write to ROM, which is read-only.");
-    }
-}
-
-impl Peripheral for ChrRomPeripheral {
-    fn read(&mut self, address: u16) -> u8 {
-        let rom = self.rom.lock().unwrap();
-        // FIXME: Is PPU address never mirrored?
-        rom.chr_rom_data[address as usize]
-    }
-
-    fn write(&mut self, _address: u16, _value: u8) {
-        // ROM is read-only; writes are ignored.
-        warn!("Attempted to write to ROM, which is read-only.");
-    }
-}
+// impl Peripheral for ChrRomPeripheral {
+//     fn read(&mut self, address: u16) -> u8 {
+//         let rom = self.rom.lock().unwrap();
+//         // FIXME: Is PPU address never mirrored?
+//         rom.chr_rom_data[address as usize]
+//     }
+//
+//     fn write(&mut self, _address: u16, _value: u8) {
+//         // ROM is read-only; writes are ignored.
+//         warn!("Attempted to write to ROM, which is read-only.");
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
